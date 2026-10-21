@@ -9,7 +9,14 @@ mkdir -p "$DIR/model"
 uv venv --quiet --allow-existing --python python3 "$DIR/venv"
 uv pip install --quiet --python "$DIR/venv/bin/python" --index-url https://download.pytorch.org/whl/cpu torch==2.14.1+cpu
 uv pip install --quiet --python "$DIR/venv/bin/python" antalia-mini==1.0.1
-for f in config.json acoustic.safetensors vocoder.safetensors; do
-  [ -f "$DIR/model/$f" ] || curl -sSL --fail -o "$DIR/model/$f" "https://huggingface.co/$REPO/resolve/$REV/$f"
-done
+while read -r f sha; do
+  [ -f "$DIR/model/$f" ] && continue
+  curl -sSL --fail -o "$DIR/model/$f.part" "https://huggingface.co/$REPO/resolve/$REV/$f"
+  echo "$sha  $DIR/model/$f.part" | sha256sum -c --quiet
+  mv "$DIR/model/$f.part" "$DIR/model/$f"
+done <<'FILES'
+config.json e22ec7fcbe635dced92070f81e6f1ee83b0d25a23877b0c9ab7fc86e7abe4cd7
+acoustic.safetensors 72c36a6855ce95dc1d35960a7b61515136813313406e5b9ae1c2ebe6cd2ad428
+vocoder.safetensors 89ca374cc55864b38a36f9ea87c41e1b17376e5d6d68e3a0458332861509bbf6
+FILES
 echo "Read aloud is ready."
