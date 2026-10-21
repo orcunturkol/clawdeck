@@ -1,10 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron';
 import { listSessions, getSessionMessages, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadLoginPath, findClaude, HOME } from './env.mjs';
+import { loadLoginPath, findClaude, HOME, IS_WIN, unpacked } from './env.mjs';
 import { Session } from './session.mjs';
 import * as config from './config.mjs';
 import { dailyTokens } from './usage.mjs';
@@ -20,7 +21,8 @@ if (process.env.CLAWDECK_PROFILE) app.setPath('userData', process.env.CLAWDECK_P
 const STATE_FILE = path.join(app.getPath('userData'), 'state.json');
 
 app.setName('Clawdeck');
-app.setDesktopName('clawdeck.desktop');
+if (IS_WIN) app.setAppUserModelId('com.orcunturkol.clawdeck'); // taskbar grouping and the Start menu shortcut
+else app.setDesktopName('clawdeck.desktop');
 loadLoginPath();
 const claudePath = findClaude();
 
@@ -61,6 +63,35 @@ function saveState() {
 
 function emit(event) {
   if (win && !win.isDestroyed()) win.webContents.send('deck:event', event);
+}
+
+// Voice input and read aloud install from inside the app; installer users have no repo or npm.
+let installing = null;
+function install(what) {
+  if (installing) throw new Error('Another install is still running.');
+  const script = unpacked(path.join(ROOT, 'scripts', `setup-${what}.${IS_WIN ? 'ps1' : 'sh'}`));
+  const [cmd, args] = IS_WIN
+    ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script]]
+    : ['sh', [script]];
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { env: process.env, windowsHide: true });
+    installing = p;
+    let last = '';
+    const onData = (d) => {
+      for (const line of String(d).split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        last = line.trim();
+        emit({ type: 'install', what, line: last });
+      }
+    };
+    p.stdout.on('data', onData);
+    p.stderr.on('data', onData);
+    p.on('error', (e) => { installing = null; reject(e); });
+    p.on('close', (code) => {
+      installing = null;
+      if (code === 0) resolve(); else reject(new Error(`The install stopped: ${last || `exit ${code}`}`));
+    });
+  });
 }
 
 function need(id) {
@@ -187,8 +218,14 @@ const handlers = {
   'browser:forward': () => pane.forward(),
   'browser:reload': () => pane.reload(),
   'browser:control': ({ who }) => pane.setControl(who === 'user' ? 'user' : 'claude'),
-  'running:list': async () => {
-    const list = await listRunning();
+  'running:list': async ({ detail }) => {
+    const list = await listRunning({ detail });
+    // Without a registry entry (an unknown Claude Code layout), this window still lists its own chats.
+    for (const s of sessions.values()) {
+      if (!list.some((r) => r.sessionId === s.id)) {
+        list.push({ pid: 0, sessionId: s.id, cwd: s.cwd, name: '', entrypoint: 'sdk-ts', status: s.running ? 'busy' : 'idle', startedAt: s.lastUsed, shells: [] });
+      }
+    }
     for (const r of list) {
       r.title = await sessionTitle(r.sessionId, r.cwd);
       r.mine = sessions.has(r.sessionId);
@@ -204,6 +241,9 @@ const handlers = {
   },
   'tts:say': ({ text }) => tts.say(text),
   'voice:status': () => ({ installed: stt.installed() }),
+  'voice:install': () => install('voice'),
+  'tts:status': () => ({ installed: tts.installed() }),
+  'tts:install': () => install('tts'),
   'voice:transcribe': ({ bytes, ext }) => stt.transcribe(bytes, ext),
   'session:context': ({ sessionId }) => need(sessionId).q.getContextUsage({ detail: 'summary' }),
 

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, readdir, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { HOME, CLAUDE_DIR, projectSlug } from './env.mjs';
+import { HOME, CLAUDE_DIR, projectSlug, claudeCommand } from './env.mjs';
 
 const run = promisify(execFile);
 const USER_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
@@ -12,7 +12,7 @@ async function readJson(file) {
 }
 
 export async function listPlugins(claudePath) {
-  const { stdout } = await run(claudePath, ['plugin', 'list', '--json'], { timeout: 30000 });
+  const { stdout } = await run(...claudeCommand(claudePath, ['plugin', 'list', '--json']), { timeout: 30000 });
   return JSON.parse(stdout).map((p) => ({
     id: p.id, version: p.version, scope: p.scope, enabled: p.enabled,
     mcpServers: Object.keys(p.mcpServers || {}), installPath: p.installPath, lastUpdated: p.lastUpdated,
@@ -20,7 +20,7 @@ export async function listPlugins(claudePath) {
 }
 
 export async function setPluginEnabled(claudePath, id, enabled) {
-  await run(claudePath, ['plugin', enabled ? 'enable' : 'disable', id], { timeout: 30000 });
+  await run(...claudeCommand(claudePath, ['plugin', enabled ? 'enable' : 'disable', id]), { timeout: 30000 });
 }
 
 // Server config can carry tokens (headers, env). Only show where it points.

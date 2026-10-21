@@ -5,30 +5,26 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME } from './env.mjs';
+import { DATA_DIR, IS_WIN } from './env.mjs';
 
 const run = promisify(execFile);
-const DIR = path.join(process.env.XDG_DATA_HOME || path.join(HOME, '.local/share'), 'clawdeck/voice');
-const CLI = path.join(DIR, 'bin/whisper-cli');
-const MODEL = path.join(DIR, 'models/ggml-large-v3-turbo-q5_0.bin');
+const DIR = path.join(DATA_DIR, 'voice');
+const CLI = path.join(DIR, 'bin', IS_WIN ? 'whisper-cli.exe' : 'whisper-cli');
+const MODEL = path.join(DIR, 'models', 'ggml-large-v3-turbo-q5_0.bin');
 
-// Local Whisper (whisper.cpp on the GPU through Vulkan). One process per clip; the model loads in about 0.2 s.
+// Local Whisper (whisper.cpp: Vulkan on Linux, CPU on Windows). One process per clip; the model loads in about 0.2 s.
 export class Stt {
   installed() { return existsSync(CLI) && existsSync(MODEL); }
 
-  async transcribe(bytes, ext = 'webm') {
-    if (!this.installed()) throw new Error('Voice input is not installed. Run npm run setup-voice in the Clawdeck folder.');
-    const base = path.join(os.tmpdir(), `clawdeck-voice-${randomUUID()}`);
-    const clip = `${base}.${ext.replace(/\W/g, '')}`;
-    const wav = `${base}.wav`;
-    await writeFile(clip, Buffer.from(bytes));
+  async transcribe(bytes) {
+    if (!this.installed()) throw new Error('Voice input is not installed.');
+    // The app records 16 kHz mono WAV, the format whisper.cpp reads.
+    const wav = path.join(os.tmpdir(), `clawdeck-voice-${randomUUID()}.wav`);
+    await writeFile(wav, Buffer.from(bytes));
     try {
-      // whisper.cpp reads 16 kHz WAV; ffmpeg converts the browser's webm/opus.
-      await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', clip, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav]);
-      const { stdout } = await run(CLI, ['-m', MODEL, '-f', wav, '-l', 'auto', '-nt', '-np', '-bs', '1', '-bo', '1'], { timeout: 120000 });
+      const { stdout } = await run(CLI, ['-m', MODEL, '-f', wav, '-l', 'auto', '-nt', '-np', '-bs', '1', '-bo', '1'], { timeout: 180000 });
       return { text: stdout.replace(/\s+/g, ' ').trim() };
     } finally {
-      rm(clip, { force: true }).catch(() => {});
       rm(wav, { force: true }).catch(() => {});
     }
   }

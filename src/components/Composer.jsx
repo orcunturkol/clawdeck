@@ -22,13 +22,14 @@ function readImage(file) {
 
 const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
 
-export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, onError, draft, setDraft, lockedText, readAloud, setReadAloud, speaking, suggestion }) {
+export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, onError, draft, setDraft, lockedText, readAloud, setReadAloud, speaking, suggestion, ensureVoice }) {
   const [images, setImages] = useState([]);
   const [pick, setPick] = useState(0);
   const ref = useRef(null);
   const voice = useVoice({
     onText: (t) => { setDraft((d) => (d ? `${d}${/\s$/.test(d) ? '' : ' '}${t}` : t)); ref.current?.focus(); },
     onError,
+    ensure: ensureVoice,
   });
   const voiceRef = useRef(voice);
   voiceRef.current = voice;

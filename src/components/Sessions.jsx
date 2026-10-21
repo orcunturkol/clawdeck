@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { ago, baseName, folderPath, since, tidyPaths } from '../format.js';
 import Icon from './Icon.jsx';
 
@@ -43,7 +42,7 @@ function Running({ running, onView, onStop, onClose }) {
         {running.map((r) => {
           const [label, tone] = STATUS[r.status] || [r.status, 'busy'];
           return (
-            <li key={r.pid} className={`run ${tone} ${r.active ? 'active' : ''}`}>
+            <li key={r.pid || r.sessionId} className={`run ${tone} ${r.active ? 'active' : ''}`}>
               <div className="run-row">
                 <button className="run-main" onClick={() => onView(r)} title={`${r.title || r.name}\n${folderPath(r.cwd)}\nProcess ${r.pid}`}>
                   <span className="led" />
@@ -70,8 +69,7 @@ function Running({ running, onView, onStop, onClose }) {
   );
 }
 
-export default function Sessions({ cwd, recent, sessions, activeId, running, onNew, onOpen, onView, onStopShell, onCloseChat, onPickDir, onDir }) {
-  const [tab, setTab] = useState('folder');
+export default function Sessions({ cwd, recent, sessions, activeId, running, onNew, onOpen, onView, onStopShell, onCloseChat, onPickDir, onDir, tab, setTab }) {
   const live = new Map((running || []).map((r) => [r.sessionId, r]));
   const tabProps = (id) => ({ role: 'tab', 'aria-selected': tab === id, onClick: () => setTab(id) });
   return (
