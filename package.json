@@ -1,0 +1,38 @@
+{
+  "name": "clawdeck",
+  "productName": "Clawdeck",
+  "version": "0.1.0",
+  "description": "Linux desktop app for Claude Code",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "setup": "npm install && node node_modules/electron/install.js && vite build",
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "app": "electron .",
+    "shot": "node scripts/shot.mjs",
+    "install-desktop": "sh scripts/install-desktop.sh",
+    "setup-voice": "sh scripts/setup-voice.sh",
+    "setup-tts": "sh scripts/setup-tts.sh",
+    "icons": "node scripts/icons.mjs",
+    "app-icon": "node scripts/app-icon.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.304",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "dompurify": "3.4.17",
+    "electron": "44.9.1",
+    "highlight.js": "11.12.0",
+    "marked": "18.1.1",
+    "playwright-core": "1.64.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vite": "8.3.4"
+  }
+}

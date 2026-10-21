@@ -1,0 +1,4 @@
+#!/bin/sh
+# Starts Clawdeck. Optional argument: the folder to open.
+APP="$(dirname "$(readlink -f "$0")")/.."
+exec "$APP/node_modules/electron/dist/electron" "$APP" "$@"
