@@ -12,7 +12,7 @@ login, settings, plugins, skills and MCP servers, and shows them in one window.
 | ![Running tab with a shell and its port](docs/screenshots/running.png) | ![Light theme](docs/screenshots/light.png) |
 | Every running chat and shell on this PC, with a Stop button. | Light and dark follow the desktop theme. |
 
-To install, see [INSTALL.md](INSTALL.md).
+To install on Linux or Windows (preview), see [INSTALL.md](INSTALL.md).
 
 ```
 ┌──────────────┬───────────────────────────────┬────────────────────────┐
@@ -56,8 +56,9 @@ To install, see [INSTALL.md](INSTALL.md).
   Clicks are real mouse events, and the element flashes amber. Sign-ins stay
   in the `persist:clawdeck-browser` partition. "Take over" blocks Claude's
   browser tools until you click "Give back".
-- Voice input is local Whisper: whisper.cpp v1.9.5 built with Vulkan, so it
-  runs on the Intel Arc GPU (it falls back to the CPU if Vulkan fails). Model:
+- Voice input is local Whisper: on Linux, whisper.cpp v1.9.5 built with Vulkan,
+  so it runs on the GPU (it falls back to the CPU if Vulkan fails); on Windows,
+  the official whisper.cpp CPU build. Model:
   `ggml-large-v3-turbo-q5_0`, language found per clip, fully offline. Each
   clip runs one `whisper-cli` process; the model loads in about 0.2 s.
   `~/.local/share/clawdeck/voice` holds only `bin/whisper-cli` and `models/`;

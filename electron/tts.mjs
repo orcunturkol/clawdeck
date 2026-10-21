@@ -5,12 +5,12 @@ import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { HOME } from './env.mjs';
+import { DATA_DIR, IS_WIN, unpacked } from './env.mjs';
 
-const DIR = path.join(process.env.XDG_DATA_HOME || path.join(HOME, '.local/share'), 'clawdeck/tts');
-const PYTHON = path.join(DIR, 'venv/bin/python');
+const DIR = path.join(DATA_DIR, 'tts');
+const PYTHON = path.join(DIR, 'venv', IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python');
 const MODEL = path.join(DIR, 'model');
-const WORKER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'tts_worker.py');
+const WORKER = unpacked(path.join(path.dirname(fileURLToPath(import.meta.url)), 'tts_worker.py'));
 
 // Turkish text to speech (Antalia-2 Mini) in a Python worker; the model loads once, in about 1.3 s.
 export class Tts {
@@ -24,7 +24,7 @@ export class Tts {
 
   start() {
     if (this.ready) return this.ready;
-    if (!this.installed()) return Promise.reject(new Error('Read aloud is not installed. Run npm run setup-tts in the Clawdeck folder.'));
+    if (!this.installed()) return Promise.reject(new Error('Read aloud is not installed.'));
     this.proc = spawn(PYTHON, ['-I', WORKER, MODEL], { env: { ...process.env, HF_HUB_OFFLINE: '1' } });
     let stderr = '';
     this.proc.stderr.on('data', (d) => { stderr = (stderr + d).slice(-2000); });

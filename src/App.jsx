@@ -44,8 +44,12 @@ export default function App() {
   const [error, setError] = useState('');
   const [webSearch, setWebSearchState] = useState(true);
   const [running, setRunning] = useState([]);
+  const [railTab, setRailTab] = useState('folder');
+  const railTabRef = useRef(railTab);
+  railTabRef.current = railTab;
   const [readAloud, setReadAloudState] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [install, setInstall] = useState(null); // { what, line, done }
   const [viewing, setViewing] = useState(null); // a session that runs in another process, read only
   const [viewT, setViewT] = useState(null);
   const runningRef = useRef(running);
@@ -147,6 +151,7 @@ export default function App() {
     if (e.type === 'window') { setMaximized(e.maximized); return; }
     if (e.type === 'browser-open') { setSide('browser'); return; }
     if (e.type === 'browser-state') { setBrowser(e.state); return; }
+    if (e.type === 'install') { setInstall({ what: e.what, line: e.line }); return; }
     const id = e.sessionId;
     if (!id) return;
     switch (e.type) {
@@ -199,7 +204,7 @@ export default function App() {
 
   // Every Claude Code process on this PC; cheap to read, so poll it.
   useEffect(() => {
-    const load = () => call('running:list').then(setRunning).catch(() => {});
+    const load = () => call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
     load();
     const id = setInterval(load, 2000);
     return () => clearInterval(id);
@@ -273,7 +278,32 @@ export default function App() {
     call('session:setEffort', { sessionId: current.current, effort }).catch((e) => setError(e.message));
   };
 
-  const setReadAloud = (on) => {
+  // Voice input and read aloud download once, after the user says yes.
+  const FEATURES = {
+    voice: { name: 'Voice input', size: 'about 570 MB (Whisper speech to text)' },
+    tts: { name: 'Read aloud', size: 'about 900 MB (Python, PyTorch and the Turkish voice)' },
+  };
+  const ensure = async (what) => {
+    const st = await call(`${what}:status`).catch(() => ({ installed: false }));
+    if (st.installed) return true;
+    if (install && !install.done) { setError('An install is already running.'); return false; }
+    const f = FEATURES[what];
+    if (!window.confirm(`${f.name} needs a one-time download of ${f.size}. Install it now?`)) return false;
+    setInstall({ what, line: 'Starting' });
+    try {
+      await call(`${what}:install`);
+      setInstall({ what, line: `${f.name} is ready.`, done: true });
+      setTimeout(() => setInstall((i) => (i?.done ? null : i)), 5000);
+      return what === 'tts'; // the voice button needs a fresh press; read aloud turns on now
+    } catch (e) {
+      setInstall(null);
+      setError(`${f.name} did not install. ${e.message}`);
+      return false;
+    }
+  };
+
+  const setReadAloud = async (on) => {
+    if (on && !(await ensure('tts'))) return;
     setReadAloudState(on);
     if (!on) stopSpeaking();
     call('tts:setEnabled', { on }).catch((e) => setError(e.message));
@@ -323,6 +353,7 @@ export default function App() {
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
         onView={view} onStopShell={stopShell} onCloseChat={closeChat} onPickDir={pickDir} onDir={openFolder}
+        tab={railTab} setTab={setRailTab}
       />
       <main className="chat">
         {viewing && (
@@ -334,6 +365,12 @@ export default function App() {
         {shown?.loading
           ? <div className="transcript"><p className="muted pad">Loading session</p></div>
           : <Transcript t={shown} answer={answer} empty={empty} />}
+        {install && (
+          <div className="install-bar" role="status">
+            <span className={`led ${install.done ? '' : 'busy'}`} />
+            <span>{install.done ? install.line : `Installing ${FEATURES[install.what].name.toLowerCase()}: ${install.line}`}</span>
+          </div>
+        )}
         {shownError && (
           <div className="error-bar" role="alert">
             <pre>{shownError}</pre>
@@ -344,7 +381,7 @@ export default function App() {
           running={t.running} disabled={!sessionId || Boolean(viewing)} commands={init?.commands || []}
           mode={settings.mode} setMode={setMode} draft={draft} setDraft={setDraft}
           webSearch={webSearch} setWebSearch={setWebSearch} onError={setError}
-          readAloud={readAloud} setReadAloud={setReadAloud} speaking={speaking}
+          readAloud={readAloud} setReadAloud={setReadAloud} speaking={speaking} ensureVoice={() => ensure('voice')}
           suggestion={viewing || t.running ? '' : cur.suggestion}
           lockedText={viewing ? 'Go back to your session to write a message' : ''}
           onSend={send} onStop={() => call('session:interrupt', { sessionId: current.current })}

@@ -9,11 +9,11 @@ mkdir -p "$DIR/models" "$DIR/bin" "$SRC"
 cd "$SRC"
 
 # Header tags match the Vulkan loader on this PC (1.4.363); change them with a big loader update.
-git clone --quiet --depth 1 --branch v1.4.363 https://github.com/KhronosGroup/Vulkan-Headers.git vulkan-headers
-git clone --quiet --depth 1 --branch vulkan-sdk-1.4.363.0 https://github.com/KhronosGroup/SPIRV-Headers.git spirv-src
+git -c advice.detachedHead=false clone --quiet --depth 1 --branch v1.4.363 https://github.com/KhronosGroup/Vulkan-Headers.git vulkan-headers
+git -c advice.detachedHead=false clone --quiet --depth 1 --branch vulkan-sdk-1.4.363.0 https://github.com/KhronosGroup/SPIRV-Headers.git spirv-src
 $CMAKE -S spirv-src -B spirv-src/build -DSPIRV_HEADERS_ENABLE_TESTS=OFF >/dev/null
 $CMAKE --install spirv-src/build --prefix "$SRC/spirv" >/dev/null
-git clone --quiet --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp.git whisper.cpp
+git -c advice.detachedHead=false clone --quiet --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp.git whisper.cpp
 
 echo "Building whisper.cpp with Vulkan"
 $CMAKE -S whisper.cpp -B whisper.cpp/build -Wno-author -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF \
@@ -32,7 +32,8 @@ rm -rf "$SRC"
 MODEL=models/ggml-large-v3-turbo-q5_0.bin
 if [ ! -f "$MODEL" ]; then
   echo "Downloading the Whisper turbo model (about 550 MB)"
-  curl -sSL --fail -o "$MODEL.part" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+  curl -sSL --fail -o "$MODEL.part" https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin
+  echo "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2  $MODEL.part" | sha256sum -c --quiet
   mv "$MODEL.part" "$MODEL"
 fi
 echo "Voice input is ready."

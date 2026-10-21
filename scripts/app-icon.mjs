@@ -34,5 +34,13 @@ function pixelSvg(png, size) {
 writeFileSync(path.join(ROOT, 'assets/icon.svg'), pixelSvg(master, 32));
 execFileSync('magick', [master, '-filter', 'point', '-resize', '800%', path.join(ROOT, 'assets/icon.png')]);
 copyFileSync(master, path.join(ROOT, 'public/icon-32.png'));
+// Windows .ico: the hand-drawn 16 px, then whole-number scales of the 32 px master.
+execFileSync('magick', [
+  path.join(SRC, 'clawdeck-16.png'), master,
+  '(', master, '-filter', 'point', '-resize', '200%', ')',
+  '(', master, '-filter', 'point', '-resize', '400%', ')',
+  '(', master, '-filter', 'point', '-resize', '800%', ')',
+  path.join(ROOT, 'assets/icon.ico'),
+]);
 copyFileSync(path.join(SRC, 'clawdeck-16.png'), path.join(ROOT, 'public/icon-16.png'));
-console.log('Wrote assets/icon.svg, assets/icon.png (256 px), public/icon-16.png, public/icon-32.png');
+console.log('Wrote assets/icon.svg, assets/icon.png (256 px), assets/icon.ico, public/icon-16.png, public/icon-32.png');
