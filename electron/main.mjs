@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron';
-import { listSessions, getSessionMessages, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage } from 'electron';
+import { listSessions, getSessionMessages, getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
@@ -14,6 +14,8 @@ import { browserServer } from './browserTools.mjs';
 import { Stt } from './stt.mjs';
 import { Tts } from './tts.mjs';
 import { listRunning, stopShell } from './running.mjs';
+import { Accounts, LOGIN } from './accounts.mjs';
+import { signIn } from './login.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -35,6 +37,7 @@ let activeId = null;
 const stt = new Stt();
 const tts = new Tts();
 const titles = new Map(); // sessionId -> { title, at }
+let accounts = null; // made when the app is ready, because the keyring needs that
 
 // Session titles come from the transcript; read each one at most every 30 s.
 async function sessionTitle(id, cwd) {
@@ -113,6 +116,7 @@ function rememberSettings(id, settings) {
 function sessionEmit(event) {
   if (event.type === 'session-ended') sessions.delete(event.sessionId);
   if (event.type === 'settings') rememberSettings(event.sessionId, event.settings);
+  if (event.type === 'sdk') watchLimits(sessions.get(event.sessionId), event.msg);
   emit(event);
   if (event.type === 'running' && !event.running) trim();
 }
@@ -130,6 +134,52 @@ function trim() {
   }
 }
 
+// Usage per account, and the switch when an account reaches its limit.
+function watchLimits(s, m) {
+  if (!s) return;
+  if (m.type === 'rate_limit_event') {
+    s.lastLimit = m.rate_limit_info;
+    accounts.note(s.account, m.rate_limit_info);
+  }
+  if (m.type === 'assistant' && m.error === 'rate_limit' && !m.parent_tool_use_id) s.limitHit = true;
+  if (m.type !== 'result' || !s.limitHit) return;
+  s.limitHit = false;
+  const resetsAt = s.lastLimit?.status === 'rejected' ? s.lastLimit.resetsAt : null;
+  accounts.limitReached(s.account, resetsAt);
+  if (!accounts.data.auto) return;
+  const next = accounts.pick(s.settings.account, s.account);
+  if (next === s.account || accounts.blocked(accounts.find(next))) {
+    const first = accounts.firstReset();
+    if (first) emit({ type: 'error', sessionId: s.id, message: `All your accounts reached their limits. The first one is free again at ${new Date(first).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` });
+    return;
+  }
+  // Only this chat moves. The prompt is in the history already, so it goes on from there on the new account.
+  setImmediate(() => {
+    if (sessions.get(s.id) !== s || s.running || s.pending.size) return;
+    restartSession(s, { continued: true }).send('Continue where you stopped.');
+  });
+}
+
+// The process options for a chat whose own account is own.
+function accountOptions(own, current = null) {
+  const account = accounts.pick(own, current);
+  return { own, account, env: accounts.env(account) };
+}
+
+// A chat moves to another account: its process starts again on the same history.
+function restartSession(s, { continued = false } = {}) {
+  s.close();
+  const next = new Session({
+    cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, permissionMode: s.settings.mode,
+    webSearch: state.webSearch, claudePath, emit: sessionEmit, mcpServers: { clawdeck: browserServer(pane) },
+    ...accountOptions(s.settings.account, s.account),
+  });
+  next.lastUsed = s.lastUsed;
+  sessions.set(next.id, next);
+  emit({ type: 'session-restarted', sessionId: next.id, account: next.account, name: accounts.name(next.account), continued, fresh: next.fresh });
+  return next;
+}
+
 async function startSession({ cwd, resume }) {
   const d = await config.readDefaults(); // read first, so no other start runs between the checks below
   const live = resume && sessions.get(resume);
@@ -140,19 +190,19 @@ async function startSession({ cwd, resume }) {
   if (live) {
     activeId = live.id;
     live.lastUsed = Date.now();
-    return { sessionId: live.id, cwd: dir, live: true, settings: live.settings };
+    return { sessionId: live.id, cwd: dir, live: true, settings: live.settings, account: live.account };
   }
-  // A chat opened again keeps its own values; a new one starts with the saved defaults.
-  const { model, effort, mode } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
+  // A chat opened again keeps its own values; a new one starts with the saved defaults and the folder's account.
+  const { model, effort, mode, account } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
   const s = new Session({
     cwd, resume, model, effort, permissionMode: mode || 'default', webSearch: state.webSearch, claudePath, emit: sessionEmit,
-    mcpServers: { clawdeck: browserServer(pane) },
+    mcpServers: { clawdeck: browserServer(pane) }, ...accountOptions(account || accounts.forFolder(dir)),
   });
   s.lastUsed = Date.now();
   sessions.set(s.id, s);
   activeId = s.id;
   trim();
-  return { sessionId: s.id, cwd: dir, live: false, settings: s.settings };
+  return { sessionId: s.id, cwd: dir, live: false, settings: s.settings, account: s.account };
 }
 
 function createWindow() {
@@ -195,11 +245,21 @@ const handlers = {
 
   'session:start': (opts) => startSession(opts),
   'session:send': ({ sessionId, text, images }) => {
-    const s = need(sessionId);
+    let s = need(sessionId);
+    // An idle chat whose account should change (a limit ended, or you picked another one) moves before it sends.
+    if (s.account !== accounts.pick(s.settings.account, s.account) && !s.running && s.pending.size === 0) s = restartSession(s);
     s.lastUsed = Date.now();
     s.send(text, images);
   },
   'session:interrupt': ({ sessionId }) => need(sessionId).interrupt(),
+  // This chat and new chats in its folder use the account.
+  'session:setAccount': ({ sessionId, account }) => {
+    let s = need(sessionId);
+    accounts.setFolder(s.cwd, account);
+    s.set({ account });
+    if (s.account !== accounts.pick(account, s.account) && !s.running && s.pending.size === 0) s = restartSession(s);
+    return { account: s.account };
+  },
   'session:setRemote': ({ sessionId, on }) => need(sessionId).setRemote(on),
   // Ends a chat's process; its history stays, so it can open again from the list.
   'session:close': ({ sessionId }) => {
@@ -214,6 +274,7 @@ const handlers = {
   'session:init': async ({ sessionId }) => {
     const s = need(sessionId);
     const init = await s.q.initializationResult();
+    if (s.account === LOGIN && init.account?.email) accounts.label(LOGIN, init.account.email);
     return { ...init, sysinit: s.init || null, sessionId: s.id, cwd: s.cwd };
   },
   'session:setModel': async ({ sessionId, model }) => {
@@ -294,6 +355,9 @@ const handlers = {
   },
 
   'usage:limits': async () => {
+    // A token account cannot read the usage API, and Claude Code's cache belongs to the login; show what its chats saw last.
+    const s = sessions.get(activeId);
+    if (s && s.account !== LOGIN) return { live: false, limits: accounts.find(s.account)?.usage || null };
     try {
       const u = await need().q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
       return { live: true, limits: u.rate_limits, plan: u.subscription_type, session: u.session };
@@ -302,6 +366,14 @@ const handlers = {
     }
   },
   'usage:daily': () => dailyTokens(),
+
+  'accounts:list': () => accounts.view(),
+  'accounts:add': ({ name, token }) => addAccount(String(name || '').trim(), String(token || '').trim()),
+  'accounts:signIn': () => signInAccount(),
+  'accounts:remove': ({ id }) => accounts.remove(id),
+  'accounts:move': ({ id, delta }) => accounts.move(id, delta),
+  'accounts:setAuto': ({ on }) => accounts.setAuto(on),
+  'accounts:setGoBack': ({ on }) => accounts.setGoBack(on),
 
   'hooks:list': async ({ cwd }) => config.listHooks(cwd, await config.listPlugins(claudePath).catch(() => [])),
   'memory:list': ({ cwd }) => config.memoryFiles(cwd),
@@ -314,8 +386,73 @@ for (const [channel, fn] of Object.entries(handlers)) {
   ipcMain.handle(channel, async (_e, arg) => fn(arg || {}));
 }
 
+// Tokens stay encrypted by the system keyring. Linux without a keyring has only a fixed key, so no tokens there.
+function keyringReady() {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  return process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text';
+}
+
+// Sign in inside Clawdeck: Claude Code makes the token, Clawdeck keeps it.
+let signingIn = false;
+async function signInAccount() {
+  if (process.platform !== 'linux') throw new Error('Sign-in inside Clawdeck works on Linux only. Paste a token instead.');
+  if (!keyringReady()) throw new Error('No system keyring is available, so Clawdeck cannot store the token safely.');
+  if (signingIn) throw new Error('A sign-in window is open already.');
+  signingIn = true;
+  try {
+    const { token, email } = await signIn({ claudePath, parent: win, dataDir: app.getPath('userData') });
+    if (email && email === accounts.find(LOGIN).email) throw new Error(`${email} is your Claude Code login already. Sign in with another account.`);
+    const name = email || `Account ${accounts.data.list.length + 1}`;
+    // The token comes straight from Claude Code, so no check message is necessary.
+    return await addAccount(name, token, { check: false });
+  } finally {
+    signingIn = false;
+  }
+}
+
+// One short message on the new account: Claude Code says at once when a token is wrong.
+async function addAccount(name, token, { check = true } = {}) {
+  if (!name) throw new Error('Give the account a name.');
+  if (!/^sk-ant-oat\d+-\S+$/.test(token)) throw new Error('This is not a Claude Code token. It starts with sk-ant-oat.');
+  if (!keyringReady()) throw new Error('No system keyring is available, so Clawdeck cannot store the token safely.');
+  if (!check) {
+    accounts.add(name, token);
+    return accounts.view();
+  }
+  const env = { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: token };
+  const q = query({
+    prompt: 'Reply with OK.',
+    options: { pathToClaudeCodeExecutable: claudePath, cwd: app.getPath('userData'), env, model: 'haiku', maxTurns: 1, persistSession: false, tools: [] },
+  });
+  let error = null;
+  let limit = null;
+  try {
+    for await (const m of q) {
+      if (m.type === 'rate_limit_event') limit = m.rate_limit_info;
+      if (m.type === 'assistant' && m.error) error = m.error;
+      if (m.type === 'result') break;
+    }
+  } finally {
+    q.close();
+  }
+  if (error === 'authentication_failed') throw new Error('Claude did not accept this token. Make a new one with `claude setup-token`.');
+  if (error && error !== 'rate_limit') throw new Error(`The token check failed: ${error}.`);
+  const id = accounts.add(name, token);
+  if (limit) accounts.note(id, limit);
+  if (error === 'rate_limit') accounts.limitReached(id, limit?.status === 'rejected' ? limit.resetsAt : null);
+  return accounts.view();
+}
+
 app.whenReady().then(async () => {
   await loadState();
+  accounts = new Accounts({
+    file: path.join(app.getPath('userData'), 'accounts.json'),
+    encrypt: (t) => safeStorage.encryptString(t).toString('base64'),
+    decrypt: (t) => safeStorage.decryptString(Buffer.from(t, 'base64')),
+    onChange: (view) => emit({ type: 'accounts', view }),
+  });
+  // Limit marks clear when the limits reset, also while nobody writes.
+  setInterval(() => emit({ type: 'accounts', view: accounts.view() }), 60000);
   createWindow();
 });
 

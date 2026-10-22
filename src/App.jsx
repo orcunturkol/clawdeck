@@ -18,13 +18,6 @@ function lastAnswer(items) {
   return turn.slice(from).map((i) => i.text).join('\n\n');
 }
 
-// Plan limit events carry fractions; the usage API carries percents.
-function limitsFromEvent(info) {
-  const out = {};
-  for (const [k, w] of Object.entries(info?.unifiedWindows || {})) out[k] = { utilization: w.utilization * 100, resets_at: w.resetsAt };
-  return out;
-}
-
 // Remote control link states from Claude Code; a switched-off chat ignores late ones.
 function bridgeState(c, m) {
   if (m.state === 'connected') return { remote: 'on' };
@@ -45,7 +38,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState(null);
   const [chats, setChats] = useState({});
   const [sessions, setSessions] = useState(null);
-  const [liveLimits, setLiveLimits] = useState(null);
+  const [accounts, setAccounts] = useState(null);
   const [rev, setRev] = useState(0);
   const [draft, setDraft] = useState('');
   const [side, setSide] = useState('panel');
@@ -121,10 +114,10 @@ export default function App() {
     loadSessions(r.cwd);
     // Still running in this window: show it as it is.
     if (r.live && known) {
-      patch(r.sessionId, () => ({ settings: r.settings }));
+      patch(r.sessionId, () => ({ settings: r.settings, account: r.account }));
       return;
     }
-    patch(r.sessionId, () => ({ ...blankChat(), cwd: r.cwd, settings: r.settings, t: resume ? { ...emptyTranscript(), loading: true } : emptyTranscript() }));
+    patch(r.sessionId, () => ({ ...blankChat(), cwd: r.cwd, settings: r.settings, account: r.account, t: resume ? { ...emptyTranscript(), loading: true } : emptyTranscript() }));
     if (resume) {
       const msgs = await call('sessions:messages', { id: resume, cwd: r.cwd }).catch(() => []);
       patch(r.sessionId, () => ({ t: fromHistory(msgs) }));
@@ -139,6 +132,7 @@ export default function App() {
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
       setReadAloudState(Boolean(st.readAloud));
+      call('accounts:list').then(setAccounts).catch(() => {});
       if (st.readAloud) call('tts:setEnabled', { on: true }).catch(() => {});
       setCwd(st.cwd);
       start(st.cwd);
@@ -151,12 +145,12 @@ export default function App() {
     if (e.type === 'browser-open') { setSide('browser'); return; }
     if (e.type === 'browser-state') { setBrowser(e.state); return; }
     if (e.type === 'install') { setInstall({ what: e.what, line: e.line }); return; }
+    if (e.type === 'accounts') { setAccounts(e.view); return; }
     const id = e.sessionId;
     if (!id) return;
     switch (e.type) {
       case 'sdk': {
         const m = e.msg;
-        if (m.type === 'rate_limit_event') setLiveLimits((l) => ({ ...(l || {}), ...limitsFromEvent(m.rate_limit_info) }));
         if (m.type === 'prompt_suggestion') { patch(id, () => ({ suggestion: m.suggestion })); break; }
         if (m.type === 'system' && m.subtype === 'bridge_state') { patch(id, (c) => bridgeState(c, m)); break; }
         patch(id, (c) => {
@@ -181,6 +175,15 @@ export default function App() {
         break;
       // Closed to save memory while idle; clicking it opens it again from its history.
       case 'session-closed': patch(id, () => ({ ended: true })); break;
+      // The chat's process moved to another account; the chat and its history stay.
+      case 'session-restarted':
+        patch(id, (c) => ({
+          account: e.account,
+          remote: 'off',
+          // An empty chat needs no note: the top bar and the Account menu show the change.
+          t: e.fresh ? c.t : addNotice(c.t, `${e.continued ? 'The account reached its usage limit. ' : ''}This chat now uses ${e.name}.${e.continued ? ' Clawdeck asked Claude to continue.' : ''}${c.remote !== 'off' ? ' Remote control is off.' : ''}`),
+        }));
+        break;
       default: break;
     }
   }), [loadSessions, patch]);
@@ -274,6 +277,8 @@ export default function App() {
   const setMode = (mode) => change('mode', mode, 'session:setMode', { mode });
   const setModel = (model) => change('model', model, 'session:setModel', { model: model === 'default' ? '' : model });
   const setEffort = (effort) => change('effort', effort, 'session:setEffort', { effort });
+  const setAccount = (account) => change('account', account, 'session:setAccount', { account });
+  const chatAccount = accounts?.list.find((a) => a.id === cur.account);
 
   // Voice input and read aloud download once, after the user says yes.
   const FEATURES = {
@@ -362,7 +367,10 @@ export default function App() {
 
   return (
     <div className={`app side-${side}`}>
-      <TopBar title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy} />
+      <TopBar
+        title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
+        account={chatAccount} onAccount={() => setSide('panel')}
+      />
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
@@ -405,8 +413,9 @@ export default function App() {
       {side === 'browser' && <BrowserPane state={browser} />}
       {side === 'panel' && (
         <Panel
-          init={init} cwd={cwd} rev={rev} turns={cur.turns} liveLimits={liveLimits} sessionCost={cur.cost}
-          settings={settings} setModel={setModel} setEffort={setEffort} setMode={setMode}
+          init={init} cwd={cwd} rev={rev} turns={cur.turns} sessionCost={cur.cost} accounts={accounts}
+          liveLimits={chatAccount?.usage} chatAccount={chatAccount}
+          settings={settings} setModel={setModel} setEffort={setEffort} setMode={setMode} setAccount={setAccount}
           onInsert={(text) => setDraft(text)} onPluginsChanged={onPluginsChanged}
         />
       )}

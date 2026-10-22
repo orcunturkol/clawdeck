@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-const CHANNEL = /^(win|app|dir|session|sessions|mcp|plugins|usage|hooks|memory|settings|browser|voice|running|tts):\w+$/;
+const CHANNEL = /^(win|app|dir|session|sessions|mcp|plugins|usage|hooks|memory|settings|browser|voice|running|tts|accounts):\w+$/;
 
 contextBridge.exposeInMainWorld('deck', {
   invoke(channel, arg) {
@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld('deck', {
     return () => ipcRenderer.removeListener('deck:event', fn);
   },
   pathForFile: (file) => webUtils.getPathForFile(file),
+  platform: process.platform,
 });

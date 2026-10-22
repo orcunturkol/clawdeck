@@ -374,6 +374,23 @@ button.icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; s
 .field span { color: var(--ink-3); }
 .row-actions { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
 
+/* Accounts: the green one is active, a red one is at its limit. */
+.account .led { background: transparent; border: 1px solid var(--ink-3); }
+.account.active .led { background: var(--green); border-color: var(--green); }
+.account.blocked .led { background: var(--red); border-color: var(--red); }
+.account .row-actions { flex-wrap: wrap; gap: 6px; }
+.switch-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.switch-line.off span { color: var(--ink-3); }
+.switch-line + .muted { margin: -4px 0 0; font-size: 12.5px; }
+.add-account { display: grid; gap: 8px; font-size: 13px; }
+.add-account input { background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; }
+.add-account .muted, .add-account .err { margin: 0; font-size: 12.5px; }
+.steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.add-account code { font: 12px var(--mono); }
+.account-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 13px; background: none; color: var(--ink-2); max-width: 240px; }
+.account-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-chip.blocked .pix { color: var(--red); }
+
 .meter { display: grid; gap: 5px; }
 .meter-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
 .meter-val { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }

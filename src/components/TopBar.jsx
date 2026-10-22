@@ -1,12 +1,17 @@
 import { call } from '../api.js';
 import Icon from './Icon.jsx';
 
-export default function TopBar({ title, side, setSide, maximized, browserBusy }) {
+export default function TopBar({ title, side, setSide, maximized, browserBusy, account, onAccount }) {
   return (
     <header className="topbar">
       <div className="brand"><img src="./icon-16.png" srcSet="./icon-16.png 1x, ./icon-32.png 2x" alt="" className="brand-icon" />Clawdeck</div>
       <div className="topbar-title">{title}</div>
       <div className="topbar-actions">
+        {account && (
+          <button className={`account-chip ${account.blocked ? 'blocked' : ''}`} onClick={onAccount} title="The active Claude account. New prompts use it. Click to see all accounts.">
+            <Icon name="person" /><span>{account.email || account.name}</span>
+          </button>
+        )}
         <div className="side-switch" role="group" aria-label="Right side">
           <button aria-pressed={side === 'panel'} onClick={() => setSide('panel')}><Icon name="panel" />Panel</button>
           <button aria-pressed={side === 'browser'} onClick={() => setSide('browser')}>
