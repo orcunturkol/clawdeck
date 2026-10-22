@@ -14,6 +14,7 @@ export class Session {
     this.running = false;
     this.stderr = [];
     this.webSearch = webSearch;
+    this.settings = { model: model || '', effort: effort || '', mode: permissionMode || 'default' };
     this.remote = false;
     this.sent = new Set(); // uuids of prompts this app sent
 
@@ -61,6 +62,8 @@ export class Session {
     try {
       for await (const msg of this.q) {
         if (msg.type === 'system' && msg.subtype === 'init') this.init = msg;
+        // Claude Code changes the mode itself too, for example when you accept a plan.
+        if (msg.type === 'system' && msg.permissionMode && msg.permissionMode !== this.settings.mode) this.set({ mode: msg.permissionMode });
         if (msg.type === 'result') this.setRunning(false);
         if (msg.type === 'system' && msg.subtype === 'bridge_state') {
           if (msg.state === 'connected') this.remote = true;
@@ -95,6 +98,11 @@ export class Session {
     const r = await this.q.enableRemoteControl(on);
     this.remote = on;
     return { url: r?.session_url || '' };
+  }
+
+  set(change) {
+    this.settings = { ...this.settings, ...change };
+    this.emit({ type: 'settings', sessionId: this.id, settings: this.settings });
   }
 
   setRunning(running) {

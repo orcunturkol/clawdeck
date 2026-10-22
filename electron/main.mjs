@@ -46,7 +46,7 @@ async function sessionTitle(id, cwd) {
   titles.set(id, { title, at: title ? Date.now() : Date.now() - 25000 });
   return title;
 }
-let state = { cwd: HOME, recent: [], webSearch: true, readAloud: false };
+let state = { cwd: HOME, recent: [], webSearch: true, readAloud: false, chatSettings: {} };
 
 async function loadState() {
   try { state = { ...state, ...JSON.parse(await readFile(STATE_FILE, 'utf8')) }; } catch {}
@@ -100,9 +100,19 @@ function need(id) {
   return s;
 }
 
+// Each chat keeps its model, effort and mode, also after its process closes. The newest 200 stay.
+function rememberSettings(id, settings) {
+  const all = state.chatSettings;
+  delete all[id];
+  all[id] = settings;
+  for (const old of Object.keys(all).slice(0, -200)) delete all[old];
+  saveState();
+}
+
 // A process that ends on its own leaves the list.
 function sessionEmit(event) {
   if (event.type === 'session-ended') sessions.delete(event.sessionId);
+  if (event.type === 'settings') rememberSettings(event.sessionId, event.settings);
   emit(event);
   if (event.type === 'running' && !event.running) trim();
 }
@@ -120,7 +130,8 @@ function trim() {
   }
 }
 
-function startSession({ cwd, resume, model, effort, permissionMode }) {
+async function startSession({ cwd, resume }) {
+  const d = await config.readDefaults(); // read first, so no other start runs between the checks below
   const live = resume && sessions.get(resume);
   const dir = live ? live.cwd : cwd;
   state.cwd = dir;
@@ -129,17 +140,19 @@ function startSession({ cwd, resume, model, effort, permissionMode }) {
   if (live) {
     activeId = live.id;
     live.lastUsed = Date.now();
-    return { sessionId: live.id, cwd: dir, live: true };
+    return { sessionId: live.id, cwd: dir, live: true, settings: live.settings };
   }
+  // A chat opened again keeps its own values; a new one starts with the saved defaults.
+  const { model, effort, mode } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
   const s = new Session({
-    cwd, resume, model, effort, permissionMode, webSearch: state.webSearch, claudePath, emit: sessionEmit,
+    cwd, resume, model, effort, permissionMode: mode || 'default', webSearch: state.webSearch, claudePath, emit: sessionEmit,
     mcpServers: { clawdeck: browserServer(pane) },
   });
   s.lastUsed = Date.now();
   sessions.set(s.id, s);
   activeId = s.id;
   trim();
-  return { sessionId: s.id, cwd: dir, live: false };
+  return { sessionId: s.id, cwd: dir, live: false, settings: s.settings };
 }
 
 function createWindow() {
@@ -203,9 +216,21 @@ const handlers = {
     const init = await s.q.initializationResult();
     return { ...init, sysinit: s.init || null, sessionId: s.id, cwd: s.cwd };
   },
-  'session:setModel': ({ sessionId, model }) => need(sessionId).q.setModel(model || undefined),
-  'session:setMode': ({ sessionId, mode }) => need(sessionId).q.setPermissionMode(mode),
-  'session:setEffort': ({ sessionId, effort }) => need(sessionId).q.applyFlagSettings({ effortLevel: effort || null }),
+  'session:setModel': async ({ sessionId, model }) => {
+    const s = need(sessionId);
+    await s.q.setModel(model || undefined);
+    s.set({ model: model || '' });
+  },
+  'session:setMode': async ({ sessionId, mode }) => {
+    const s = need(sessionId);
+    await s.q.setPermissionMode(mode);
+    s.set({ mode });
+  },
+  'session:setEffort': async ({ sessionId, effort }) => {
+    const s = need(sessionId);
+    await s.q.applyFlagSettings({ effortLevel: effort || null });
+    s.set({ effort: effort || '' });
+  },
   'session:setWebSearch': ({ on }) => {
     state.webSearch = Boolean(on);
     saveState();
@@ -280,7 +305,6 @@ const handlers = {
   'memory:list': ({ cwd }) => config.memoryFiles(cwd),
   'memory:read': ({ cwd, file }) => config.readMemory(cwd, file),
   'memory:write': ({ cwd, file, content }) => config.writeMemory(cwd, file, content),
-  'settings:defaults': () => config.readDefaults(),
   'settings:saveDefaults': (d) => config.saveDefaults(d),
 };
 

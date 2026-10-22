@@ -36,7 +36,8 @@ function bridgeState(c, m) {
 }
 
 // Everything one chat needs on screen. Each open chat keeps its own copy.
-const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off' });
+const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off', settings: null });
+const NO_SETTINGS = { model: '', effort: '', mode: 'default' };
 
 export default function App() {
   const [cwd, setCwd] = useState('');
@@ -44,7 +45,6 @@ export default function App() {
   const [sessionId, setSessionId] = useState(null);
   const [chats, setChats] = useState({});
   const [sessions, setSessions] = useState(null);
-  const [settings, setSettings] = useState({ model: '', effort: '', mode: 'default' });
   const [liveLimits, setLiveLimits] = useState(null);
   const [rev, setRev] = useState(0);
   const [draft, setDraft] = useState('');
@@ -67,8 +67,6 @@ export default function App() {
   const chatsRef = useRef(chats);
   chatsRef.current = chats;
   const current = useRef(null);
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
   const cwdRef = useRef(cwd);
   cwdRef.current = cwd;
   const draftRef = useRef(draft);
@@ -92,8 +90,7 @@ export default function App() {
   const loadInit = useCallback(async (id) => {
     try {
       const info = await call('session:init', { sessionId: id });
-      patch(id, () => ({ init: info }));
-      if (current.current === id && info.current_permission_mode) setSettings((s) => ({ ...s, mode: info.current_permission_mode }));
+      patch(id, (c) => ({ init: info, ...(info.current_permission_mode && c.settings && { settings: { ...c.settings, mode: info.current_permission_mode } }) }));
     } catch (e) {
       patch(id, () => ({ error: `Claude Code did not start: ${e.message}` }));
     }
@@ -109,14 +106,9 @@ export default function App() {
     const emptyPrev = pc && !pc.ended && !pc.t.running && !pc.t.permissions.length && !draftRef.current.trim()
       && !pc.t.items.some((i) => i.kind === 'user');
     drafts.current[prev] = draftRef.current;
-    const s = settingsRef.current;
     setError('');
-    const r = await call('session:start', {
-      cwd: dir, resume,
-      model: s.model && s.model !== 'default' ? s.model : undefined,
-      effort: s.effort || undefined,
-      permissionMode: s.mode,
-    });
+    // The main process picks the chat's model, effort and mode: its own ones, or the saved defaults.
+    const r = await call('session:start', { cwd: dir, resume });
     current.current = r.sessionId;
     setSessionId(r.sessionId);
     setDraft(drafts.current[r.sessionId] || '');
@@ -129,10 +121,10 @@ export default function App() {
     loadSessions(r.cwd);
     // Still running in this window: show it as it is.
     if (r.live && known) {
-      if (known.mode) setSettings((st) => ({ ...st, mode: known.mode }));
+      patch(r.sessionId, () => ({ settings: r.settings }));
       return;
     }
-    patch(r.sessionId, () => ({ ...blankChat(), cwd: r.cwd, t: resume ? { ...emptyTranscript(), loading: true } : emptyTranscript() }));
+    patch(r.sessionId, () => ({ ...blankChat(), cwd: r.cwd, settings: r.settings, t: resume ? { ...emptyTranscript(), loading: true } : emptyTranscript() }));
     if (resume) {
       const msgs = await call('sessions:messages', { id: resume, cwd: r.cwd }).catch(() => []);
       patch(r.sessionId, () => ({ t: fromHistory(msgs) }));
@@ -148,9 +140,6 @@ export default function App() {
       setWebSearchState(st.webSearch !== false);
       setReadAloudState(Boolean(st.readAloud));
       if (st.readAloud) call('tts:setEnabled', { on: true }).catch(() => {});
-      const d = await call('settings:defaults');
-      setSettings((s) => ({ ...s, model: d.model || '', effort: d.effortLevel || '', mode: d.defaultMode || s.mode }));
-      settingsRef.current = { ...settingsRef.current, model: d.model || '', effort: d.effortLevel || '', mode: d.defaultMode || 'default' };
       setCwd(st.cwd);
       start(st.cwd);
     })();
@@ -183,6 +172,7 @@ export default function App() {
         break;
       }
       case 'running': patch(id, (c) => ({ t: { ...c.t, running: e.running } })); break;
+      case 'settings': patch(id, () => ({ settings: e.settings })); break;
       case 'permission': patch(id, (c) => ({ t: { ...c.t, permissions: [...c.t.permissions, e] } })); break;
       case 'permission-cancel': patch(id, (c) => ({ t: { ...c.t, permissions: c.t.permissions.filter((p) => p.id !== e.id) } })); break;
       case 'error': patch(id, () => ({ error: `${e.message}${e.detail ? `\n${e.detail}` : ''}` })); break;
@@ -200,6 +190,7 @@ export default function App() {
   const cur = (sessionId && chats[sessionId]) || blankChat();
   const t = cur.t;
   const init = cur.init;
+  const settings = cur.settings || NO_SETTINGS;
 
   // Read Turkish answers aloud when a turn of the open chat ends; switching chats reads nothing.
   useEffect(() => {
@@ -274,20 +265,15 @@ export default function App() {
     call('session:answer', { sessionId: id, id: pid, ...ans });
   };
 
-  const setMode = (mode) => {
+  // Model, effort and mode belong to the open chat only.
+  const change = (key, value, channel, arg) => {
     const id = current.current;
-    setSettings((s) => ({ ...s, mode }));
-    patch(id, () => ({ mode }));
-    if (init) call('session:setMode', { sessionId: id, mode }).catch((e) => setError(e.message));
+    patch(id, (c) => ({ settings: { ...(c.settings || NO_SETTINGS), [key]: value } }));
+    call(channel, { sessionId: id, ...arg }).catch((e) => setError(e.message));
   };
-  const setModel = (model) => {
-    setSettings((s) => ({ ...s, model }));
-    call('session:setModel', { sessionId: current.current, model: model === 'default' ? '' : model }).catch((e) => setError(e.message));
-  };
-  const setEffort = (effort) => {
-    setSettings((s) => ({ ...s, effort }));
-    call('session:setEffort', { sessionId: current.current, effort }).catch((e) => setError(e.message));
-  };
+  const setMode = (mode) => change('mode', mode, 'session:setMode', { mode });
+  const setModel = (model) => change('model', model, 'session:setModel', { model: model === 'default' ? '' : model });
+  const setEffort = (effort) => change('effort', effort, 'session:setEffort', { effort });
 
   // Voice input and read aloud download once, after the user says yes.
   const FEATURES = {
