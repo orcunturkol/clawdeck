@@ -5,7 +5,7 @@ import Meter from './Meter.jsx';
 import { MODES } from '../components/Composer.jsx';
 import { tokens, folderPath } from '../format.js';
 
-export default function SessionSection({ init, settings, setModel, setEffort, setMode, cwd, turns, sessionCost }) {
+export default function SessionSection({ init, settings, setModel, setEffort, setMode, setAccount, cwd, turns, sessionCost, chatAccount, accounts }) {
   const [context, setContext] = useState(null);
   const [saved, setSaved] = useState('');
   const models = init?.models || [];
@@ -23,15 +23,31 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
     setTimeout(() => setSaved(''), 3000);
   };
 
-  const account = init?.account;
+  // Claude Code reports the login's account even when a token runs the chat.
+  const account = chatAccount && chatAccount.id !== 'login' ? { email: chatAccount.name } : init?.account;
+  const choices = accounts?.list || [];
+  const own = choices.find((a) => a.id === settings.account);
   return (
     <Section title="Session" icon="sliders" summary={current?.displayName || ''} defaultOpen>
       <dl className="facts">
         <dt>Folder</dt><dd title={cwd}>{folderPath(cwd)}</dd>
-        {account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}
+        {choices.length < 2 && account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}
         {init?.claude_code_version && <><dt>Claude Code</dt><dd>{init.claude_code_version}</dd></>}
         {sessionCost > 0 && <><dt>Cost</dt><dd>${sessionCost.toFixed(2)} at API prices</dd></>}
       </dl>
+      {choices.length > 1 && (
+        <label className="field" title="This chat uses the account. New chats in this folder start on it too.">
+          <span>Account</span>
+          <select value={settings.account || ''} disabled={!settings.account} onChange={(e) => setAccount(e.target.value)}>
+            {choices.map((a) => <option key={a.id} value={a.id}>{a.email || a.name}{a.blocked ? ' (at its limit)' : ''}</option>)}
+          </select>
+        </label>
+      )}
+      {own && chatAccount && chatAccount.id !== own.id && (
+        <p className="muted">{own.blocked
+          ? `Runs on ${chatAccount.email || chatAccount.name} while ${own.email || own.name} is at its limit.`
+          : `Moves to ${own.email || own.name} with your next message.`}</p>
+      )}
       <label className="field">
         <span>Model</span>
         <select value={settings.model || 'default'} disabled={!init} onChange={(e) => setModel(e.target.value)}>

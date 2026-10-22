@@ -1,4 +1,5 @@
 import SessionSection from './SessionSection.jsx';
+import AccountsSection from './AccountsSection.jsx';
 import UsageSection from './UsageSection.jsx';
 import McpSection from './McpSection.jsx';
 import PluginsSection from './PluginsSection.jsx';
@@ -12,6 +13,7 @@ export default function Panel(props) {
   return (
     <aside className="panel" aria-label="Claude Code control panel">
       <SessionSection {...props} />
+      <AccountsSection accounts={props.accounts} chatAccount={props.chatAccount} />
       <UsageSection ready={ready} turns={turns} live={liveLimits} />
       <McpSection ready={ready} rev={rev} />
       <PluginsSection errors={init?.sysinit?.plugin_errors} onChanged={onPluginsChanged} />

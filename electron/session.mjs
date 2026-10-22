@@ -3,9 +3,10 @@ import { randomUUID } from 'node:crypto';
 
 // One live Claude Code process. Prompts go in through an open input stream.
 export class Session {
-  constructor({ cwd, resume, model, effort, permissionMode, webSearch = true, mcpServers, claudePath, emit }) {
+  constructor({ cwd, resume, id, model, effort, permissionMode, webSearch = true, mcpServers, claudePath, emit, account, own, env }) {
     this.cwd = cwd;
-    this.id = resume || randomUUID();
+    this.id = resume || id || randomUUID();
+    this.fresh = !resume; // no message yet, so no history file to resume
     this.emit = emit;
     this.pending = new Map();
     this.queue = [];
@@ -14,7 +15,9 @@ export class Session {
     this.running = false;
     this.stderr = [];
     this.webSearch = webSearch;
-    this.settings = { model: model || '', effort: effort || '', mode: permissionMode || 'default' };
+    this.account = account; // the account this process runs on
+    // own = the chat's account; it differs from account only while automatic switching covers a limit
+    this.settings = { model: model || '', effort: effort || '', mode: permissionMode || 'default', account: own || account };
     this.remote = false;
     this.sent = new Set(); // uuids of prompts this app sent
 
@@ -35,6 +38,7 @@ export class Session {
     if (effort) options.effort = effort;
     if (permissionMode) options.permissionMode = permissionMode;
     if (mcpServers) options.mcpServers = mcpServers;
+    if (env) options.env = env;
 
     this.q = query({ prompt: this.input(), options });
     this.pump();
@@ -70,11 +74,12 @@ export class Session {
           if (msg.state === 'failed' || msg.state === 'policy_disabled') this.remote = false;
         }
         if (this.isRemotePrompt(msg)) {
+          this.fresh = false;
           this.setRunning(true);
-          this.emit({ type: 'sdk', sessionId: this.id, msg: { ...msg, remotePrompt: true } });
+          this.emit({ type: 'sdk', sessionId: this.id, account: this.account, msg: { ...msg, remotePrompt: true } });
           continue;
         }
-        this.emit({ type: 'sdk', sessionId: this.id, msg });
+        this.emit({ type: 'sdk', sessionId: this.id, account: this.account, msg });
       }
     } catch (err) {
       if (!this.closed) this.emit({ type: 'error', sessionId: this.id, message: err.message, detail: this.stderr.slice(-8).join('\n') });
@@ -118,6 +123,7 @@ export class Session {
     ];
     const uuid = randomUUID();
     this.sent.add(uuid);
+    this.fresh = false;
     this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: this.id, uuid });
     this.setRunning(true);
     this.wake?.();
