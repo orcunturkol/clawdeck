@@ -14,6 +14,8 @@ export class Session {
     this.running = false;
     this.stderr = [];
     this.webSearch = webSearch;
+    this.remote = false;
+    this.sent = new Set(); // uuids of prompts this app sent
 
     const options = {
       pathToClaudeCodeExecutable: claudePath,
@@ -60,6 +62,15 @@ export class Session {
       for await (const msg of this.q) {
         if (msg.type === 'system' && msg.subtype === 'init') this.init = msg;
         if (msg.type === 'result') this.setRunning(false);
+        if (msg.type === 'system' && msg.subtype === 'bridge_state') {
+          if (msg.state === 'connected') this.remote = true;
+          if (msg.state === 'failed' || msg.state === 'policy_disabled') this.remote = false;
+        }
+        if (this.isRemotePrompt(msg)) {
+          this.setRunning(true);
+          this.emit({ type: 'sdk', sessionId: this.id, msg: { ...msg, remotePrompt: true } });
+          continue;
+        }
         this.emit({ type: 'sdk', sessionId: this.id, msg });
       }
     } catch (err) {
@@ -67,6 +78,23 @@ export class Session {
     }
     this.setRunning(false);
     if (!this.closed) this.emit({ type: 'session-ended', sessionId: this.id });
+  }
+
+  // With remote control on, a prompt typed on claude.ai or the phone comes in as a user message this app did not send.
+  isRemotePrompt(msg) {
+    if (!this.remote || msg.type !== 'user' || msg.parent_tool_use_id || msg.isMeta || msg.isSynthetic) return false;
+    if (this.sent.has(msg.uuid)) return false;
+    const c = msg.message?.content;
+    if (typeof c === 'string') return Boolean(c.trim());
+    return Array.isArray(c) && !c.some((b) => b.type === 'tool_result') && c.some((b) => b.type === 'text' || b.type === 'image');
+  }
+
+  // Remote control: the same chat on claude.ai/code and in the Claude app. Not in the SDK types yet.
+  async setRemote(on) {
+    if (typeof this.q.enableRemoteControl !== 'function') throw new Error('This Agent SDK version has no remote control.');
+    const r = await this.q.enableRemoteControl(on);
+    this.remote = on;
+    return { url: r?.session_url || '' };
   }
 
   setRunning(running) {
@@ -80,7 +108,9 @@ export class Session {
       ...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
       ...(text ? [{ type: 'text', text }] : []),
     ];
-    this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: this.id });
+    const uuid = randomUUID();
+    this.sent.add(uuid);
+    this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: this.id, uuid });
     this.setRunning(true);
     this.wake?.();
   }

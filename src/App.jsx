@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { call, onEvent } from './api.js';
-import { applyMessage, addUserPrompt, emptyTranscript, fromHistory } from './transcript.js';
+import { applyMessage, addUserPrompt, addNotice, emptyTranscript, fromHistory } from './transcript.js';
 import { home, baseName, folderPath } from './format.js';
 import TopBar from './components/TopBar.jsx';
 import Sessions, { where } from './components/Sessions.jsx';
@@ -25,8 +25,18 @@ function limitsFromEvent(info) {
   return out;
 }
 
+// Remote control link states from Claude Code; a switched-off chat ignores late ones.
+function bridgeState(c, m) {
+  if (m.state === 'connected') return { remote: 'on' };
+  if (c.remote === 'off') return {};
+  if (m.state === 'failed' || m.state === 'policy_disabled') {
+    return { remote: 'off', error: `Remote control stopped${m.detail ? `: ${m.detail}` : '.'}` };
+  }
+  return { remote: 'connecting' };
+}
+
 // Everything one chat needs on screen. Each open chat keeps its own copy.
-const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false });
+const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off' });
 
 export default function App() {
   const [cwd, setCwd] = useState('');
@@ -159,6 +169,7 @@ export default function App() {
         const m = e.msg;
         if (m.type === 'rate_limit_event') setLiveLimits((l) => ({ ...(l || {}), ...limitsFromEvent(m.rate_limit_info) }));
         if (m.type === 'prompt_suggestion') { patch(id, () => ({ suggestion: m.suggestion })); break; }
+        if (m.type === 'system' && m.subtype === 'bridge_state') { patch(id, (c) => bridgeState(c, m)); break; }
         patch(id, (c) => {
           const out = { t: applyMessage(c.t, m) };
           if (m.type === 'system' && m.subtype === 'init' && c.init) out.init = { ...c.init, sysinit: m };
@@ -309,6 +320,23 @@ export default function App() {
     call('tts:setEnabled', { on }).catch((e) => setError(e.message));
   };
 
+  const setRemote = async (on) => {
+    const id = current.current;
+    patch(id, () => ({ remote: on ? 'connecting' : 'off' }));
+    try {
+      const r = await call('session:setRemote', { sessionId: id, on });
+      patch(id, (c) => {
+        if (on && c.remote === 'off') return {}; // turned off while it connected
+        return {
+          remote: on ? 'on' : 'off',
+          t: on ? addNotice(c.t, 'Remote control is on. Continue this chat in the Claude app or at', r.url) : addNotice(c.t, 'Remote control is off.'),
+        };
+      });
+    } catch (e) {
+      patch(id, () => ({ remote: 'off', error: `Remote control did not start. ${e.message}` }));
+    }
+  };
+
   const setWebSearch = (on) => {
     setWebSearchState(on);
     call('session:setWebSearch', { on }).catch((e) => setError(e.message));
@@ -382,6 +410,7 @@ export default function App() {
           mode={settings.mode} setMode={setMode} draft={draft} setDraft={setDraft}
           webSearch={webSearch} setWebSearch={setWebSearch} onError={setError}
           readAloud={readAloud} setReadAloud={setReadAloud} speaking={speaking} ensureVoice={() => ensure('voice')}
+          remote={cur.remote} setRemote={setRemote}
           suggestion={viewing || t.running ? '' : cur.suggestion}
           lockedText={viewing ? 'Go back to your session to write a message' : ''}
           onSend={send} onStop={() => call('session:interrupt', { sessionId: current.current })}

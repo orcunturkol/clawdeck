@@ -69,7 +69,8 @@ function onUser(s, msg, fromHistory) {
     // tool_use_result is the structured output, sent for single results.
     for (const b of results) setResult(s, b, results.length === 1 ? msg.tool_use_result : undefined);
   }
-  if (!fromHistory || msg.parent_tool_use_id || msg.isMeta) return;
+  // Live prompts typed here are on screen already; remote ones (claude.ai, the phone) are not.
+  if (!(fromHistory || msg.remotePrompt) || msg.parent_tool_use_id || msg.isMeta) return;
   if (Array.isArray(content) && content.some((b) => b.type === 'tool_result')) return;
   const c = cleanUserText(textOf(content));
   const images = Array.isArray(content) ? content.filter((b) => b.type === 'image').length : 0;
@@ -133,6 +134,10 @@ export function applyMessage(state, msg, fromHistory = false) {
 
 export function addUserPrompt(state, text, images) {
   return { ...state, running: true, items: [...state.items, { kind: 'user', id: nid(), text, images: images.length }] };
+}
+
+export function addNotice(state, text, url) {
+  return { ...state, items: [...state.items, { kind: 'notice', id: nid(), text, url }] };
 }
 
 export function fromHistory(messages) {

@@ -22,7 +22,7 @@ function readImage(file) {
 
 const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
 
-export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, onError, draft, setDraft, lockedText, readAloud, setReadAloud, speaking, suggestion, ensureVoice }) {
+export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, onError, draft, setDraft, lockedText, readAloud, setReadAloud, speaking, suggestion, ensureVoice, remote, setRemote }) {
   const [images, setImages] = useState([]);
   const [pick, setPick] = useState(0);
   const ref = useRef(null);
@@ -196,6 +196,13 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
           onClick={() => setReadAloud(!readAloud)} title={readAloud ? 'Turkish answers are read aloud' : 'Turkish answers are not read aloud'}
         >
           <Icon name="speaker" /><span className="label">Read aloud</span>
+        </button>
+        <button
+          className={`web-toggle ${remote !== 'off' ? 'on' : ''} ${remote === 'connecting' ? 'connecting' : ''}`} aria-pressed={remote !== 'off'} aria-label="Remote control"
+          disabled={disabled} onClick={() => setRemote(remote === 'off')}
+          title={{ off: 'Continue this chat in the Claude app or on claude.ai/code', connecting: 'Remote control is connecting', on: 'Remote control is on. Click to turn it off.' }[remote]}
+        >
+          <Icon name="phone" /><span className="label">Remote control</span>
         </button>
         <span className="hint">{suggestion && !draft ? 'Tab or → takes the suggestion, Enter sends' : 'Enter to send, Shift+Enter for a new line, hold Space to talk'}</span>
         {running
