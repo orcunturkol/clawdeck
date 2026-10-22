@@ -266,9 +266,10 @@ pre.diff .add { background: var(--add); }
 .web-toggle .pix { color: var(--ink-3); }
 .web-toggle.on { color: var(--ink); }
 .web-toggle.on .pix { color: var(--amber-text); }
-.web-toggle.speaking .pix { animation: blink 1.2s steps(2, start) infinite; }
+.web-toggle.speaking .pix, .web-toggle.connecting .pix { animation: blink 1.2s steps(2, start) infinite; }
 
 .notice { color: var(--ink-3); font-size: 13.5px; margin: 10px 0; white-space: pre-wrap; }
+.notice a { color: inherit; text-decoration-color: var(--amber); overflow-wrap: anywhere; }
 .turn-end { color: var(--ink-3); font-size: 12.5px; margin: 6px 0 0; }
 .turn-end.err { color: var(--red); white-space: pre-wrap; }
 .working { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13.5px; margin-top: 10px; }
@@ -311,11 +312,14 @@ pre.diff .add { background: var(--add); }
 /* A narrow chat (for example with the browser open) keeps only the icons. */
 @container (max-width: 760px) {
   .composer-bar .label, .composer-bar .hint { display: none; }
-  .composer-bar { justify-content: flex-start; }
+  .composer-bar { justify-content: flex-start; gap: 6px; }
   .composer-bar .primary, .composer-bar .stop { margin-left: auto; }
 }
 .composer-bar .hint { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mode select { font-size: 13px; padding: 3px 6px; background: var(--bg); }
+/* The mode menu gives way first, so Send stays in a narrow bar. */
+.composer-bar .mode { min-width: 0; flex-shrink: 1; }
+.composer-bar .mode select { width: 100%; text-overflow: ellipsis; }
 .thumbs { display: flex; gap: 6px; padding: 10px 12px 0; }
 .thumb { padding: 0; width: 56px; height: 56px; overflow: hidden; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }

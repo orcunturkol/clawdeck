@@ -107,10 +107,10 @@ function sessionEmit(event) {
   if (event.type === 'running' && !event.running) trim();
 }
 
-// Above the limit, close idle chats used longest ago. A working chat or one that waits for you stays.
+// Above the limit, close idle chats used longest ago. A working chat, one that waits for you or one with remote control on stays.
 function trim() {
   const idle = [...sessions.values()]
-    .filter((s) => s.id !== activeId && !s.running && s.pending.size === 0)
+    .filter((s) => s.id !== activeId && !s.running && s.pending.size === 0 && !s.remote)
     .sort((a, b) => a.lastUsed - b.lastUsed);
   while (sessions.size > MAX_LIVE && idle.length) {
     const s = idle.shift();
@@ -187,6 +187,7 @@ const handlers = {
     s.send(text, images);
   },
   'session:interrupt': ({ sessionId }) => need(sessionId).interrupt(),
+  'session:setRemote': ({ sessionId, on }) => need(sessionId).setRemote(on),
   // Ends a chat's process; its history stays, so it can open again from the list.
   'session:close': ({ sessionId }) => {
     const s = sessions.get(sessionId);

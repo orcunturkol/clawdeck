@@ -34,7 +34,7 @@ function Item({ item, tools }) {
     case 'text': return <Markdown text={item.text} />;
     case 'thinking': return <Thinking text={item.text} />;
     case 'tool': return tools[item.id] ? <Tool tool={tools[item.id]} tools={tools} /> : null;
-    case 'notice': return <p className="notice">{item.text}</p>;
+    case 'notice': return <p className="notice">{item.text}{item.url && <> <a href={item.url} target="_blank" rel="noreferrer">{item.url}</a></>}</p>;
     case 'result':
       return item.ok
         ? <p className="turn-end">{duration(item.ms)}{item.cost ? `, $${item.cost.toFixed(2)}` : ''}</p>
