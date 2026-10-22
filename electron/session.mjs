@@ -6,6 +6,7 @@ export class Session {
   constructor({ cwd, resume, model, effort, permissionMode, webSearch = true, mcpServers, claudePath, emit }) {
     this.cwd = cwd;
     this.id = resume || randomUUID();
+    this.fresh = !resume; // no message yet, so no history file to resume
     this.emit = emit;
     this.pending = new Map();
     this.queue = [];
@@ -70,6 +71,7 @@ export class Session {
           if (msg.state === 'failed' || msg.state === 'policy_disabled') this.remote = false;
         }
         if (this.isRemotePrompt(msg)) {
+          this.fresh = false;
           this.setRunning(true);
           this.emit({ type: 'sdk', sessionId: this.id, msg: { ...msg, remotePrompt: true } });
           continue;
@@ -118,6 +120,7 @@ export class Session {
     ];
     const uuid = randomUUID();
     this.sent.add(uuid);
+    this.fresh = false;
     this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: this.id, uuid });
     this.setRunning(true);
     this.wake?.();

@@ -252,12 +252,14 @@ const handlers = {
         list.push({ pid: 0, sessionId: s.id, cwd: s.cwd, name: '', entrypoint: 'sdk-ts', status: s.running ? 'busy' : 'idle', startedAt: s.lastUsed, shells: [] });
       }
     }
-    for (const r of list) {
+    // A chat with no message yet holds nothing to show.
+    const shown = list.filter((r) => !sessions.get(r.sessionId)?.fresh);
+    for (const r of shown) {
       r.title = await sessionTitle(r.sessionId, r.cwd);
       r.mine = sessions.has(r.sessionId);
       r.active = r.sessionId === activeId;
     }
-    return list;
+    return shown;
   },
   'running:stop': ({ pid, start }) => stopShell(pid, start),
   'tts:setEnabled': ({ on }) => {

@@ -34,15 +34,16 @@ function Shell({ sh, onStop }) {
   );
 }
 
-function Running({ running, onView, onStop, onClose }) {
+function Running({ running, activeId, onView, onStop, onClose }) {
   return (
     <section className="running" aria-label="Running Claude Code sessions">
       {running.length === 0 && <p className="muted pad">No Claude Code session is running.</p>}
       <ul className="run-list">
         {running.map((r) => {
           const [label, tone] = STATUS[r.status] || [r.status, 'busy'];
+          const open = r.sessionId === activeId; // known at once; the list itself refreshes every 2 s
           return (
-            <li key={r.pid || r.sessionId} className={`run ${tone} ${r.active ? 'active' : ''}`}>
+            <li key={r.pid || r.sessionId} className={`run ${tone} ${open ? 'active' : ''}`}>
               <div className="run-row">
                 <button className="run-main" onClick={() => onView(r)} title={`${r.title || r.name}\n${folderPath(r.cwd)}\nProcess ${r.pid}`}>
                   <span className="led" />
@@ -50,7 +51,7 @@ function Running({ running, onView, onStop, onClose }) {
                   <span className="run-title">{r.title || r.name}</span>
                   <span className="run-meta">{baseName(r.cwd)}, {where(r)}, {label.toLowerCase()}</span>
                 </button>
-                {r.mine && !r.active && (
+                {r.mine && !open && (
                   <button className="run-close" aria-label="Close this chat" title="Close this chat (its history stays)" onClick={() => onClose(r)}>
                     <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" /></svg>
                   </button>
@@ -78,7 +79,7 @@ export default function Sessions({ cwd, recent, sessions, activeId, running, onN
         <button {...tabProps('folder')}>This folder</button>
         <button {...tabProps('running')}>Running <span className="tab-count">{running?.length || 0}</span></button>
       </div>
-      {tab === 'running' ? <Running running={running || []} onView={onView} onStop={onStopShell} onClose={onCloseChat} /> : <>
+      {tab === 'running' ? <Running running={running || []} activeId={activeId} onView={onView} onStop={onStopShell} onClose={onCloseChat} /> : <>
         <div className="folder">
           <button className="folder-name" onClick={onPickDir} title={`${folderPath(cwd)}\nClick to choose another folder`}>
             <span className="folder-base"><Icon name="folder" />{baseName(cwd)}</span>
