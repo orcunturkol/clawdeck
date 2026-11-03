@@ -229,6 +229,14 @@ export default function App() {
     setTimeout(() => call('running:list').then(setRunning).catch(() => {}), 600);
   };
 
+  const rename = async (id, dir, title) => {
+    try {
+      await call('sessions:rename', { id, cwd: dir, title });
+    } catch (e) { setError(e.message); }
+    loadSessions(cwdRef.current);
+    call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
+  };
+
   const stopShell = async (sh) => {
     if (!window.confirm(`Stop this shell and the programs it started?\n\n${sh.command.split('\n')[0]}`)) return;
     try {
@@ -328,7 +336,7 @@ export default function App() {
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
-        onView={view} onStopShell={stopShell} onCloseChat={closeChat} onPickDir={pickDir} onDir={openFolder}
+        onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
         tab={railTab} setTab={setRailTab}
       />
       <main className="chat">

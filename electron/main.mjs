@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage } from 'electron';
-import { listSessions, getSessionMessages, getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk';
+import { listSessions, getSessionMessages, getSessionInfo, renameSession, query } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, writeFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
 import path from 'node:path';
@@ -322,6 +322,17 @@ const handlers = {
 
   'sessions:list': async ({ cwd }) => byLastAnswer(await listSessions({ dir: cwd, limit: 60 }), (s) => s.cwd || cwd, (s) => s.lastModified),
   'sessions:messages': ({ id, cwd }) => getSessionMessages(id, { dir: cwd }),
+  'sessions:rename': async ({ id, cwd, title }) => {
+    const name = String(title || '').trim();
+    if (!name) throw new Error('Give the session a name.');
+    const s = sessions.get(id);
+    const dir = s?.cwd || cwd;
+    // A live chat must take the name itself, or its process writes the old one back. Not in the SDK types yet.
+    if (s && typeof s.q.renameSession === 'function') await s.q.renameSession(name, id);
+    // Any other session, or one whose process did not write the name: it goes into the transcript directly.
+    if ((await getSessionInfo(id, { dir }).catch(() => null))?.customTitle !== name) await renameSession(id, name, { dir });
+    titles.delete(id);
+  },
 
   'mcp:status': async () => config.redactMcp(await need().q.mcpServerStatus()),
   'mcp:toggle': ({ name, enabled }) => need().q.toggleMcpServer(name, enabled),
