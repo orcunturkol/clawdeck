@@ -1,6 +1,6 @@
 # Clawdeck
 
-A Linux desktop app for Claude Code. It runs real Claude Code sessions with your
+A desktop app for Claude Code on Linux and Windows. It runs real Claude Code sessions with your
 login, settings, plugins, skills and MCP servers, and shows them in one window.
 
 ![Chat with tool rows, and the control panel with session settings, usage limits and MCP servers](docs/screenshots/chat.png)
@@ -12,7 +12,7 @@ login, settings, plugins, skills and MCP servers, and shows them in one window.
 | ![Running tab with a shell and its port](docs/screenshots/running.png) | ![Light theme](docs/screenshots/light.png) |
 | Every running chat and shell on this PC, with a Stop button. | Light and dark follow the desktop theme. |
 
-To install on Linux or Windows (preview), see [INSTALL.md](INSTALL.md).
+To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
 
 ```
 ┌──────────────┬───────────────────────────────┬────────────────────────┐
@@ -43,7 +43,12 @@ To install on Linux or Windows (preview), see [INSTALL.md](INSTALL.md).
 ```
 
 - The main process uses `@anthropic-ai/claude-agent-sdk` and points it at the
-  installed `claude` binary. `claude update` also updates the app.
+  installed `claude` binary: the first one in `PATH` or `~/.local/bin`, and on
+  Windows also the Claude Code that comes with the Claude desktop app
+  (`%APPDATA%\Claude\claude-code`). `claude update` also updates the app.
+- When Claude Code is not logged in on the computer, the chat shows a Log in bar.
+  It runs `claude auth login`: you sign in in the browser and paste the code
+  into Clawdeck. No terminal is needed.
 - The renderer has no Node access. It talks to the main process through a
   small channel list in `electron/preload.cjs`. No network port is open.
 - Permission prompts, `AskUserQuestion` and plan approval come through the
@@ -56,20 +61,6 @@ To install on Linux or Windows (preview), see [INSTALL.md](INSTALL.md).
   Clicks are real mouse events, and the element flashes amber. Sign-ins stay
   in the `persist:clawdeck-browser` partition. "Take over" blocks Claude's
   browser tools until you click "Give back".
-- Voice input is local Whisper: on Linux, whisper.cpp v1.9.5 built with Vulkan,
-  so it runs on the GPU (it falls back to the CPU if Vulkan fails); on Windows,
-  the official whisper.cpp CPU build. Model:
-  `ggml-large-v3-turbo-q5_0`, language found per clip, fully offline. Each
-  clip runs one `whisper-cli` process; the model loads in about 0.2 s.
-  `~/.local/share/clawdeck/voice` holds only `bin/whisper-cli` and `models/`;
-  the setup script deletes its sources and build files.
-  Measured on a Core Ultra 7 155H: about 3.7 s after you stop talking, for any
-  clip up to 30 s. The app window may use the microphone and no other device.
-- Read aloud (switch in the message bar) speaks each Turkish answer when the
-  turn ends, with Antalia-2 Mini (`cloud0day3/antalia-mini` 1.0.1, Apache-2.0,
-  one synthetic voice, CPU). A Python worker in `~/.local/share/clawdeck/tts`
-  loads the model once (about 1.3 s) and makes speech about 16 times faster
-  than real time. Code blocks and tables are not read. The mic stops the voice.
 - Every chat has its own Claude Code process, so switching chats or folders
   never stops a chat that is working. Up to 10 chats stay live (about 1 GB each
   with the MCP servers, set by `MAX_LIVE` in `electron/main.mjs`); above that the
@@ -100,7 +91,7 @@ npm run install-desktop  # app grid entry, icon, `clawdeck` command
 clawdeck ~/some/project  # open a folder
 ```
 
-Requirements, optional voice features, update and uninstall: [INSTALL.md](INSTALL.md).
+Requirements, update and uninstall: [INSTALL.md](INSTALL.md).
 
 ## Development
 
@@ -115,8 +106,6 @@ CLAWDECK_PROFILE=<dir> npm run app          # separate profile, safe next to an 
 - Enter sends. Shift+Enter adds a line.
 - `/` opens the skill and command list. Arrow keys and Tab pick an item.
 - Shift+Tab cycles the permission mode.
-- Hold Space in the empty message box to talk (a short press does nothing), or
-  hold Ctrl+Space anywhere, or click Voice. Escape cancels.
 - When Claude Code suggests a next prompt, it shows in the empty box; Tab or
   Right arrow takes it, Enter sends.
 - Escape stops a running turn.

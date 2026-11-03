@@ -103,6 +103,47 @@ const entry = (reg, shells) => ({
   status: reg.status || 'idle', startedAt: reg.startedAt, shells,
 });
 
+// Splits a Windows command line the way programs read it (CommandLineToArgvW rules).
+const BACKSLASH = '\\';
+function winArgs(line) {
+  const args = [];
+  let cur = '';
+  let quoted = false;
+  let has = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === BACKSLASH) {
+      let n = 0;
+      while (line[i + n] === BACKSLASH) n++;
+      if (line[i + n] === '"') {
+        // 2n backslashes and a quote: n backslashes, and the quote opens or closes; 2n+1: n backslashes and a real quote.
+        cur += BACKSLASH.repeat(n >> 1);
+        if (n % 2) cur += '"'; else quoted = !quoted;
+        i += n;
+      } else {
+        cur += BACKSLASH.repeat(n);
+        i += n - 1;
+      }
+      has = true;
+    } else if (c === '"') {
+      if (quoted && line[i + 1] === '"') { cur += '"'; i++; } else quoted = !quoted;
+      has = true;
+    } else if (!quoted && (c === ' ' || c === '\t')) {
+      if (has) args.push(cur);
+      cur = '';
+      has = false;
+    } else {
+      cur += c;
+      has = true;
+    }
+  }
+  if (has) args.push(cur);
+  return args;
+}
+
+// Claude Code's PowerShell tool starts cmd.exe, and the script stays in an environment variable nobody else can read.
+const POWERSHELL_TOOL = /CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT/;
+
 // Windows has no /proc: one PowerShell query lists every process and every listening port.
 let winCache = { at: 0, snap: null };
 async function winSnapshot(fresh = false) {
@@ -111,29 +152,63 @@ async function winSnapshot(fresh = false) {
     + "@{n='Start';e={[int64](($_.CreationDate.ToUniversalTime() - [datetime]'1970-01-01').TotalMilliseconds)}}; "
     + "$l = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess; "
     + "@{ p = @($p); l = @($l) } | ConvertTo-Json -Depth 3 -Compress";
-  const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { maxBuffer: 64 << 20, timeout: 20000 });
+  const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { maxBuffer: 64 << 20, timeout: 20000, windowsHide: true });
   const j = JSON.parse(stdout);
-  winCache = { at: Date.now(), snap: { procs: j.p || [], listens: j.l || [] } };
+  const procs = j.p || [];
+  winCache = { at: Date.now(), snap: { procs, listens: j.l || [], msys: await msysProcs(procs) } };
   return winCache.snap;
 }
 
-function winShells(pid, snap) {
+// Git Bash starts programs through its own process layer: a program's Windows parent is gone by the time
+// it runs, so `sleep` or `npm run dev` hang off no Windows tree. Git's ps still knows the real tree.
+async function msysProcs(procs) {
+  const bash = procs.map((p) => winArgs(p.CommandLine || '')[0] || '').find((a) => /[\\/]bin[\\/]bash\.exe$/i.test(a));
+  if (!bash) return [];
+  const ps = path.join(bash.replace(/[\\/](usr[\\/])?bin[\\/]bash\.exe$/i, ''), 'usr', 'bin', 'ps.exe');
+  const { stdout } = await run(ps, ['-l'], { windowsHide: true, timeout: 10000 }).catch(() => ({ stdout: '' }));
+  return stdout.split('\n').slice(1).map((l) => l.trim().split(/\s+/)).filter((f) => f.length > 4 && /^\d+$/.test(f[0]))
+    .map((f) => ({ pid: Number(f[0]), ppid: Number(f[1]), pgid: Number(f[2]), winpid: Number(f[3]) }));
+}
+
+// Every Windows process a shell started: its Windows tree, plus the Git Bash processes in its tree or process group.
+function winTree(root, snap) {
   const kids = new Map();
-  for (const p of snap.procs) kids.set(p.ParentProcessId, [...(kids.get(p.ParentProcessId) || []), p]);
-  const tree = (root) => {
-    const all = [root];
-    for (let i = 0; i < all.length; i++) all.push(...(kids.get(all[i]) || []).map((p) => p.ProcessId));
-    return new Set(all);
+  for (const p of snap.procs) kids.set(p.ParentProcessId, [...(kids.get(p.ParentProcessId) || []), p.ProcessId]);
+  const all = new Set([root]);
+  const walk = () => {
+    for (const id of [...all]) for (const k of kids.get(id) || []) all.add(k);
   };
+  let size = 0;
+  while (all.size !== size) {
+    size = all.size;
+    walk();
+    const pids = new Set(snap.msys.filter((m) => all.has(m.winpid)).map((m) => m.pid));
+    const groups = new Set(snap.msys.filter((m) => pids.has(m.pid) && m.pgid > 1).map((m) => m.pgid));
+    for (const m of snap.msys) if (pids.has(m.ppid) || groups.has(m.pgid)) all.add(m.winpid);
+  }
+  return all;
+}
+
+function winShells(pid, snap) {
   const out = [];
-  for (const c of kids.get(pid) || []) {
-    const command = shellCommand([c.CommandLine || '']);
+  for (const c of snap.procs.filter((p) => p.ParentProcessId === pid)) {
+    const line = c.CommandLine || '';
+    const command = POWERSHELL_TOOL.test(line) ? 'PowerShell command' : shellCommand(winArgs(line));
     if (!command) continue;
-    const mine = tree(c.ProcessId);
+    const mine = winTree(c.ProcessId, snap);
     const ports = [...new Set(snap.listens.filter((l) => mine.has(l.OwningProcess)).map((l) => l.LocalPort))].sort((a, b) => a - b);
     out.push({ pid: c.ProcessId, start: String(c.Start), command, startedAt: c.Start, ports });
   }
   return out;
+}
+
+// Claude Code's procStart on Windows is the creation time as a FILETIME (100 ns steps since 1601).
+function sameProcess(reg, snap) {
+  const p = snap.procs.find((x) => x.ProcessId === reg.pid);
+  if (!p) return false;
+  if (!/^\d+$/.test(String(reg.procStart || ''))) return true;
+  const ms = Number(BigInt(reg.procStart) / 10000n) - 11644473600000;
+  return Math.abs(ms - p.Start) < 2000;
 }
 
 function alive(pid) {
@@ -143,7 +218,9 @@ function alive(pid) {
 // Windows: shells and ports cost a PowerShell run, so only when the Running tab shows them.
 async function listWindows(detail) {
   const snap = detail ? await winSnapshot().catch(() => null) : null;
-  return (await registry()).filter((reg) => alive(reg.pid)).map((reg) => entry(reg, snap ? winShells(reg.pid, snap) : []));
+  // With a snapshot, the start time also guards against a reused pid; Windows reuses them quickly.
+  return (await registry()).filter((reg) => (snap ? sameProcess(reg, snap) : alive(reg.pid)))
+    .map((reg) => entry(reg, snap ? winShells(reg.pid, snap) : []));
 }
 
 // Every live Claude Code process on this PC, from its registry file in ~/.claude/sessions.
@@ -172,7 +249,10 @@ export async function stopShell(pid, start) {
     const snap = await winSnapshot(true);
     const ok = (await registry()).some((reg) => winShells(reg.pid, snap).some((sh) => sh.pid === pid && sh.start === start));
     if (!ok) throw new Error('This shell is not running any more.');
-    await run('taskkill', ['/PID', String(pid), '/T', '/F']);
+    // taskkill /T follows only the Windows tree; the Git Bash programs are named one by one.
+    const pids = [...winTree(pid, snap)];
+    await run('taskkill', ['/T', '/F', ...pids.flatMap((p) => ['/PID', String(p)])], { windowsHide: true }).catch(() => {});
+    winCache.at = 0; // the next list must not show the stopped shell
     return;
   }
   const live = await listRunning();

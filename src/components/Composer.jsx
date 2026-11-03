@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useVoice } from '../voice.js';
 import Icon from './Icon.jsx';
 
 export const MODES = [
@@ -20,55 +19,13 @@ function readImage(file) {
   });
 }
 
-const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
+// A path with spaces (common on Windows) needs quotes, or Claude Code reads only its first word.
+const mention = (p) => (/\s/.test(p) ? `@"${p}"` : `@${p}`);
 
-export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, onError, draft, setDraft, lockedText, readAloud, setReadAloud, speaking, suggestion, ensureVoice, remote, setRemote }) {
+export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, draft, setDraft, lockedText, suggestion, remote, setRemote }) {
   const [images, setImages] = useState([]);
   const [pick, setPick] = useState(0);
   const ref = useRef(null);
-  const voice = useVoice({
-    onText: (t) => { setDraft((d) => (d ? `${d}${/\s$/.test(d) ? '' : ' '}${t}` : t)); ref.current?.focus(); },
-    onError,
-    ensure: ensureVoice,
-  });
-  const voiceRef = useRef(voice);
-  voiceRef.current = voice;
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-
-  // Push to talk: hold Space while the message box is empty, or hold Ctrl+Space anywhere. Escape cancels.
-  useEffect(() => {
-    let holding = false;
-    let spaceTimer = null;
-    let spaceTalk = false;
-    // Space talks only in the empty message box; other fields and buttons keep their Space.
-    const spaceFree = (target) => (target === ref.current || target === document.body) && !draftRef.current && !ref.current?.disabled;
-    const plainSpace = (e) => e.code === 'Space' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
-    const down = (e) => {
-      if (e.code === 'Space' && e.ctrlKey && !e.repeat) {
-        e.preventDefault();
-        if (!holding) { holding = true; voiceRef.current.start(); }
-      } else if (plainSpace(e) && (spaceTimer || spaceTalk || spaceFree(e.target))) {
-        e.preventDefault();
-        // A short press does nothing; holding a moment starts the mic.
-        if (!e.repeat && !spaceTimer && !spaceTalk) {
-          spaceTimer = setTimeout(() => { spaceTimer = null; spaceTalk = true; voiceRef.current.start(); }, 250);
-        }
-      } else if (e.key === 'Escape' && voiceRef.current.state === 'recording') {
-        voiceRef.current.stop(true);
-      }
-    };
-    const up = (e) => {
-      if (holding && (e.code === 'Space' || e.key === 'Control')) { holding = false; voiceRef.current.stop(); }
-      if (e.code === 'Space') {
-        if (spaceTimer) { clearTimeout(spaceTimer); spaceTimer = null; }
-        if (spaceTalk) { spaceTalk = false; voiceRef.current.stop(); }
-      }
-    };
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
-  }, []);
 
   const slash = /^\/\S*$/.test(draft) ? draft.slice(1).toLowerCase() : null;
   const matches = useMemo(() => {
@@ -113,7 +70,7 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
-    if (e.key === 'Escape' && running && voice.state !== 'recording') onStop();
+    if (e.key === 'Escape' && running) onStop();
   };
 
   const onPaste = async (e) => {
@@ -131,7 +88,7 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
     const imgs = files.filter((f) => f.type.startsWith('image/'));
     const others = files.filter((f) => !f.type.startsWith('image/'));
     if (imgs.length) setImages([...images, ...(await Promise.all(imgs.map(readImage)))]);
-    if (others.length) setDraft(`${draft}${draft && !draft.endsWith(' ') ? ' ' : ''}${others.map((f) => '@' + window.deck.pathForFile(f)).join(' ')} `);
+    if (others.length) setDraft(`${draft}${draft && !draft.endsWith(' ') ? ' ' : ''}${others.map((f) => mention(window.deck.pathForFile(f))).join(' ')} `);
   };
 
   return (
@@ -173,38 +130,13 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
           <Icon name="globe" /><span className="label">Web search</span>
         </button>
         <button
-          className={`voice ${voice.state}`} disabled={voice.state === 'writing'} aria-label="Voice"
-          onClick={() => (voice.state === 'recording' ? voice.stop() : voice.start())}
-          title="Talk to type: hold Space in the empty message box, hold Ctrl+Space anywhere, or click to start and stop. Escape cancels."
-        >
-          {voice.state === 'idle' && (
-            <><Icon name="mic" /><span className="label">Voice</span></>
-          )}
-          {voice.state === 'recording' && (
-            <>
-              <span className="led rec" />{clock(voice.elapsed)}
-              <span className="vu" aria-hidden>
-                {Array.from({ length: 8 }, (_, i) => <span key={i} className={i < Math.round(voice.level * 8) ? 'lit' : ''} />)}
-              </span>
-              Stop
-            </>
-          )}
-          {voice.state === 'writing' && <><span className="led busy" /><span className="label">Writing</span></>}
-        </button>
-        <button
-          className={`web-toggle ${readAloud ? 'on' : ''} ${speaking ? 'speaking' : ''}`} aria-pressed={readAloud} aria-label="Read aloud"
-          onClick={() => setReadAloud(!readAloud)} title={readAloud ? 'Turkish answers are read aloud' : 'Turkish answers are not read aloud'}
-        >
-          <Icon name="speaker" /><span className="label">Read aloud</span>
-        </button>
-        <button
           className={`web-toggle ${remote !== 'off' ? 'on' : ''} ${remote === 'connecting' ? 'connecting' : ''}`} aria-pressed={remote !== 'off'} aria-label="Remote control"
           disabled={disabled} onClick={() => setRemote(remote === 'off')}
           title={{ off: 'Continue this chat in the Claude app or on claude.ai/code', connecting: 'Remote control is connecting', on: 'Remote control is on. Click to turn it off.' }[remote]}
         >
           <Icon name="phone" /><span className="label">Remote control</span>
         </button>
-        <span className="hint">{suggestion && !draft ? 'Tab or → takes the suggestion, Enter sends' : 'Enter to send, Shift+Enter for a new line, hold Space to talk'}</span>
+        <span className="hint">{suggestion && !draft ? 'Tab or → takes the suggestion, Enter sends' : 'Enter to send, Shift+Enter for a new line'}</span>
         {running
           ? <button className="stop" aria-label="Stop" onClick={onStop}><Icon name="stop" /><span className="label">Stop</span></button>
           : <button className="primary" aria-label="Send" onClick={send} disabled={disabled || (!draft.trim() && !images.length)}><Icon name="send" /><span className="label">Send</span></button>}

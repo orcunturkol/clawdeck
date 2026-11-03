@@ -11,8 +11,14 @@ async function readJson(file) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return null; }
 }
 
+function runClaude(claudePath, args) {
+  if (!claudePath) return Promise.reject(new Error('Claude Code was not found on this computer.'));
+  const [cmd, argv, opts] = claudeCommand(claudePath, args);
+  return run(cmd, argv, { ...opts, timeout: 30000, maxBuffer: 16 << 20 });
+}
+
 export async function listPlugins(claudePath) {
-  const { stdout } = await run(...claudeCommand(claudePath, ['plugin', 'list', '--json']), { timeout: 30000 });
+  const { stdout } = await runClaude(claudePath, ['plugin', 'list', '--json']);
   return JSON.parse(stdout).map((p) => ({
     id: p.id, version: p.version, scope: p.scope, enabled: p.enabled,
     mcpServers: Object.keys(p.mcpServers || {}), installPath: p.installPath, lastUpdated: p.lastUpdated,
@@ -20,7 +26,7 @@ export async function listPlugins(claudePath) {
 }
 
 export async function setPluginEnabled(claudePath, id, enabled) {
-  await run(...claudeCommand(claudePath, ['plugin', enabled ? 'enable' : 'disable', id]), { timeout: 30000 });
+  await runClaude(claudePath, ['plugin', enabled ? 'enable' : 'disable', id]);
 }
 
 // Server config can carry tokens (headers, env). Only show where it points.

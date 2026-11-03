@@ -82,3 +82,36 @@ export function signIn({ claudePath, parent, dataDir }) {
     }, 300);
   });
 }
+
+// Log Claude Code itself in (`claude auth login`). It needs no terminal: it prints the sign-in link and
+// reads the code that the sign-in page shows. On Windows this is often the only way, because Claude Code
+// from the desktop app has no `claude` command in the terminal.
+export class CliLogin {
+  constructor({ claudePath, onUrl }) {
+    this.out = '';
+    const [cmd, args, opts] = claudeCommand(claudePath, ['auth', 'login']);
+    const env = { ...(opts.env || process.env) };
+    delete env.CLAUDE_CODE_OAUTH_TOKEN;
+    this.p = spawn(cmd, args, { ...opts, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const onData = (d) => {
+      this.out = (this.out + plain(String(d))).slice(-8000);
+      const m = this.out.match(/https:\/\/\S+oauth\/authorize\S+/);
+      if (m && !this.url) { this.url = m[0]; onUrl(this.url); }
+    };
+    this.p.stdout.on('data', onData);
+    this.p.stderr.on('data', onData);
+    this.done = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.p.kill(); reject(new Error('The login took more than 10 minutes, so Clawdeck stopped it.')); }, 10 * 60 * 1000);
+      this.p.on('error', (e) => { clearTimeout(timer); reject(e); });
+      this.p.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error(`The login did not finish. ${this.out.trim().split('\n').pop() || `Exit ${code}.`}`));
+      });
+    });
+    this.done.catch(() => {});
+  }
+
+  code(text) { this.p.stdin.write(`${String(text).trim()}\n`); }
+  cancel() { this.p.kill(); }
+}

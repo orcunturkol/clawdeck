@@ -3,8 +3,9 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.dirname(path.dirname(new URL(import.meta.url).pathname));
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SRC = path.join(ROOT, 'assets/app-icon');
 const master = path.join(SRC, 'clawdeck-32.png');
 

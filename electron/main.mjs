@@ -1,21 +1,18 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage } from 'electron';
 import { listSessions, getSessionMessages, getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, writeFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadLoginPath, findClaude, HOME, IS_WIN, unpacked } from './env.mjs';
+import { loadLoginPath, findClaude, HOME, IS_WIN } from './env.mjs';
 import { Session } from './session.mjs';
 import * as config from './config.mjs';
 import { dailyTokens } from './usage.mjs';
 import { BrowserPane } from './browser.mjs';
 import { browserServer } from './browserTools.mjs';
-import { Stt } from './stt.mjs';
-import { Tts } from './tts.mjs';
 import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN } from './accounts.mjs';
-import { signIn } from './login.mjs';
+import { signIn, CliLogin } from './login.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -26,7 +23,7 @@ app.setName('Clawdeck');
 if (IS_WIN) app.setAppUserModelId('com.orcunturkol.clawdeck'); // taskbar grouping and the Start menu shortcut
 else app.setDesktopName('clawdeck.desktop');
 loadLoginPath();
-const claudePath = findClaude();
+let claudePath = findClaude();
 
 let win = null;
 let pane = null;
@@ -34,8 +31,6 @@ let pane = null;
 const MAX_LIVE = 10; // each live chat holds about 1 GB (Claude Code + its MCP servers)
 const sessions = new Map(); // sessionId -> Session
 let activeId = null;
-const stt = new Stt();
-const tts = new Tts();
 const titles = new Map(); // sessionId -> { title, at }
 let accounts = null; // made when the app is ready, because the keyring needs that
 
@@ -49,13 +44,18 @@ async function sessionTitle(id, cwd) {
   titles.set(id, { title, at: title ? Date.now() : Date.now() - 25000 });
   return title;
 }
-let state = { cwd: HOME, recent: [], webSearch: true, readAloud: false, chatSettings: {} };
+let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {} };
+
+// A folder on the command line opens there: clawdeck ~/project
+function folderArg(argv, cwd = process.cwd()) {
+  const arg = argv.slice(1).filter((a) => !a.startsWith('-') && isDir(path.resolve(cwd, a)) && path.resolve(cwd, a) !== app.getAppPath()).pop();
+  return arg ? path.resolve(cwd, arg) : null;
+}
 
 async function loadState() {
   try { state = { ...state, ...JSON.parse(await readFile(STATE_FILE, 'utf8')) }; } catch {}
-  // A folder on the command line opens there: clawdeck ~/project
-  const arg = process.argv.slice(1).filter((a) => !a.startsWith('-') && isDir(a) && path.resolve(a) !== app.getAppPath()).pop();
-  if (arg) state.cwd = path.resolve(arg);
+  const arg = folderArg(process.argv);
+  if (arg) state.cwd = arg;
 }
 function isDir(p) {
   try { return statSync(p).isDirectory(); } catch { return false; }
@@ -66,35 +66,6 @@ function saveState() {
 
 function emit(event) {
   if (win && !win.isDestroyed()) win.webContents.send('deck:event', event);
-}
-
-// Voice input and read aloud install from inside the app; installer users have no repo or npm.
-let installing = null;
-function install(what) {
-  if (installing) throw new Error('Another install is still running.');
-  const script = unpacked(path.join(ROOT, 'scripts', `setup-${what}.${IS_WIN ? 'ps1' : 'sh'}`));
-  const [cmd, args] = IS_WIN
-    ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script]]
-    : ['sh', [script]];
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { env: process.env, windowsHide: true });
-    installing = p;
-    let last = '';
-    const onData = (d) => {
-      for (const line of String(d).split(/\r?\n/)) {
-        if (!line.trim()) continue;
-        last = line.trim();
-        emit({ type: 'install', what, line: last });
-      }
-    };
-    p.stdout.on('data', onData);
-    p.stderr.on('data', onData);
-    p.on('error', (e) => { installing = null; reject(e); });
-    p.on('close', (code) => {
-      installing = null;
-      if (code === 0) resolve(); else reject(new Error(`The install stopped: ${last || `exit ${code}`}`));
-    });
-  });
 }
 
 function need(id) {
@@ -167,7 +138,7 @@ function accountOptions(own, current = null) {
 }
 
 // A chat moves to another account: its process starts again on the same history.
-function restartSession(s, { continued = false } = {}) {
+function restartSession(s, { continued = false, quiet = false } = {}) {
   s.close();
   const next = new Session({
     cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, permissionMode: s.settings.mode,
@@ -176,11 +147,23 @@ function restartSession(s, { continued = false } = {}) {
   });
   next.lastUsed = s.lastUsed;
   sessions.set(next.id, next);
-  emit({ type: 'session-restarted', sessionId: next.id, account: next.account, name: accounts.name(next.account), continued, fresh: next.fresh });
+  emit({ type: 'session-restarted', sessionId: next.id, account: next.account, name: accounts.name(next.account), continued, fresh: next.fresh, quiet });
   return next;
 }
 
+// Claude Code may be installed while the app is open, so look again before a chat starts.
+function needClaude() {
+  claudePath = claudePath || findClaude();
+  if (!claudePath) {
+    throw new Error(IS_WIN
+      ? 'Claude Code was not found. Install it (https://claude.com/claude-code), run `claude` once to log in, then open Clawdeck again.'
+      : 'Claude Code was not found in PATH or ~/.local/bin. Install it, run `claude` once to log in, then open Clawdeck again.');
+  }
+  return claudePath;
+}
+
 async function startSession({ cwd, resume }) {
+  needClaude();
   const d = await config.readDefaults(); // read first, so no other start runs between the checks below
   const live = resume && sessions.get(resume);
   const dir = live ? live.cwd : cwd;
@@ -218,10 +201,10 @@ function createWindow() {
     },
   });
   pane = new BrowserPane(win, emit);
-  // The app window may use the microphone and nothing else.
+  // The app window needs no device or browser permission.
   const ses = win.webContents.session;
-  ses.setPermissionRequestHandler((wc, perm, cb, details) => cb(wc === win.webContents && perm === 'media' && (details.mediaTypes || []).every((t) => t === 'audio')));
-  ses.setPermissionCheckHandler((wc, perm) => wc === win?.webContents && perm === 'media');
+  ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  ses.setPermissionCheckHandler(() => false);
   win.loadFile(path.join(ROOT, 'dist/index.html'));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -323,17 +306,6 @@ const handlers = {
     return shown;
   },
   'running:stop': ({ pid, start }) => stopShell(pid, start),
-  'tts:setEnabled': ({ on }) => {
-    state.readAloud = Boolean(on);
-    saveState();
-    if (on) tts.start().catch(() => {}); // load the model before the first answer
-  },
-  'tts:say': ({ text }) => tts.say(text),
-  'voice:status': () => ({ installed: stt.installed() }),
-  'voice:install': () => install('voice'),
-  'tts:status': () => ({ installed: tts.installed() }),
-  'tts:install': () => install('tts'),
-  'voice:transcribe': ({ bytes, ext }) => stt.transcribe(bytes, ext),
   'session:context': ({ sessionId }) => need(sessionId).q.getContextUsage({ detail: 'summary' }),
 
   'sessions:list': ({ cwd }) => listSessions({ dir: cwd, limit: 60 }),
@@ -343,9 +315,9 @@ const handlers = {
   'mcp:toggle': ({ name, enabled }) => need().q.toggleMcpServer(name, enabled),
   'mcp:reconnect': ({ name }) => need().q.reconnectMcpServer(name),
 
-  'plugins:list': () => config.listPlugins(claudePath),
+  'plugins:list': () => config.listPlugins(needClaude()),
   'plugins:toggle': async ({ id, enabled }) => {
-    await config.setPluginEnabled(claudePath, id, enabled);
+    await config.setPluginEnabled(needClaude(), id, enabled);
     let fresh = null;
     for (const s of sessions.values()) {
       const r = await s.q.reloadPlugins().catch(() => null);
@@ -370,6 +342,9 @@ const handlers = {
   'accounts:list': () => accounts.view(),
   'accounts:add': ({ name, token }) => addAccount(String(name || '').trim(), String(token || '').trim()),
   'accounts:signIn': () => signInAccount(),
+  'accounts:login': () => startLogin(),
+  'accounts:loginCode': ({ code }) => finishLogin(code),
+  'accounts:loginCancel': () => { cliLogin?.cancel(); cliLogin = null; },
   'accounts:remove': ({ id }) => accounts.remove(id),
   'accounts:move': ({ id, delta }) => accounts.move(id, delta),
   'accounts:setAuto': ({ on }) => accounts.setAuto(on),
@@ -400,13 +375,46 @@ async function signInAccount() {
   if (signingIn) throw new Error('A sign-in window is open already.');
   signingIn = true;
   try {
-    const { token, email } = await signIn({ claudePath, parent: win, dataDir: app.getPath('userData') });
+    const { token, email } = await signIn({ claudePath: needClaude(), parent: win, dataDir: app.getPath('userData') });
     if (email && email === accounts.find(LOGIN).email) throw new Error(`${email} is your Claude Code login already. Sign in with another account.`);
     const name = email || `Account ${accounts.data.list.length + 1}`;
     // The token comes straight from Claude Code, so no check message is necessary.
     return await addAccount(name, token, { check: false });
   } finally {
     signingIn = false;
+  }
+}
+
+// Claude Code's own login, for a computer where it never logged in.
+let cliLogin = null;
+async function startLogin() {
+  cliLogin?.cancel();
+  const login = new CliLogin({ claudePath: needClaude(), onUrl: () => {} });
+  cliLogin = login;
+  // Claude Code opens the browser itself; the link is for when it did not.
+  const end = Date.now() + 20000;
+  while (!login.url && Date.now() < end) {
+    await Promise.race([login.done.catch(() => {}), new Promise((r) => setTimeout(r, 200))]);
+    if (login.p.exitCode != null) break;
+  }
+  if (login.p.exitCode === 0) return { url: '', done: true }; // logged in already
+  if (!login.url) { login.cancel(); throw new Error(`Claude Code did not start the login. ${login.out.trim().split('\n').pop() || ''}`); }
+  return { url: login.url };
+}
+
+async function finishLogin(code) {
+  const login = cliLogin;
+  if (!login) throw new Error('Start the login again.');
+  if (!String(code || '').trim()) throw new Error('Paste the code from the sign-in page.');
+  login.code(code);
+  try {
+    await login.done;
+  } finally {
+    if (cliLogin === login) cliLogin = null;
+  }
+  // Chats on the login start again, so they read the new login.
+  for (const s of [...sessions.values()]) {
+    if (s.account === LOGIN && !s.running && s.pending.size === 0) restartSession(s, { quiet: true });
   }
 }
 
@@ -422,7 +430,7 @@ async function addAccount(name, token, { check = true } = {}) {
   const env = { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: token };
   const q = query({
     prompt: 'Reply with OK.',
-    options: { pathToClaudeCodeExecutable: claudePath, cwd: app.getPath('userData'), env, model: 'haiku', maxTurns: 1, persistSession: false, tools: [] },
+    options: { pathToClaudeCodeExecutable: needClaude(), cwd: app.getPath('userData'), env, model: 'haiku', maxTurns: 1, persistSession: false, tools: [] },
   });
   let error = null;
   let limit = null;
@@ -443,7 +451,20 @@ async function addAccount(name, token, { check = true } = {}) {
   return accounts.view();
 }
 
+// One window per profile: starting Clawdeck again (Start menu, taskbar, `clawdeck dir`) shows the open one.
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
+app.on('second-instance', (_e, argv, cwd) => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  const dir = folderArg(argv, cwd);
+  if (dir) emit({ type: 'open-folder', cwd: dir });
+});
+
 app.whenReady().then(async () => {
+  if (!primary) return;
   await loadState();
   accounts = new Accounts({
     file: path.join(app.getPath('userData'), 'accounts.json'),
@@ -458,6 +479,5 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   for (const s of sessions.values()) s.close();
-  tts.stop();
   app.quit();
 });
