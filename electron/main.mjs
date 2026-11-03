@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { loadLoginPath, findClaude, HOME, IS_WIN } from './env.mjs';
 import { Session } from './session.mjs';
 import * as config from './config.mjs';
-import { dailyTokens } from './usage.mjs';
+import { dailyTokens, lastAnswer } from './usage.mjs';
 import { BrowserPane } from './browser.mjs';
 import { browserServer } from './browserTools.mjs';
 import { listRunning, stopShell } from './running.mjs';
@@ -43,6 +43,12 @@ async function sessionTitle(id, cwd) {
   // A new session has no title yet; ask again after 5 s.
   titles.set(id, { title, at: title ? Date.now() : Date.now() - 25000 });
   return title;
+}
+
+// The session Claude answered in last comes first. Without an answer in the transcript, `since` counts.
+async function byLastAnswer(list, cwdOf, since) {
+  for (const r of list) r.lastAnswer = (await lastAnswer(r.sessionId, cwdOf(r))) || since(r) || 0;
+  return list.sort((a, b) => b.lastAnswer - a.lastAnswer);
 }
 let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {} };
 
@@ -309,12 +315,12 @@ const handlers = {
       r.mine = sessions.has(r.sessionId);
       r.active = r.sessionId === activeId;
     }
-    return shown;
+    return byLastAnswer(shown, (r) => r.cwd, (r) => r.startedAt);
   },
   'running:stop': ({ pid, start }) => stopShell(pid, start),
   'session:context': ({ sessionId }) => need(sessionId).q.getContextUsage({ detail: 'summary' }),
 
-  'sessions:list': ({ cwd }) => listSessions({ dir: cwd, limit: 60 }),
+  'sessions:list': async ({ cwd }) => byLastAnswer(await listSessions({ dir: cwd, limit: 60 }), (s) => s.cwd || cwd, (s) => s.lastModified),
   'sessions:messages': ({ id, cwd }) => getSessionMessages(id, { dir: cwd }),
 
   'mcp:status': async () => config.redactMcp(await need().q.mcpServerStatus()),

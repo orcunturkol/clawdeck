@@ -1,11 +1,48 @@
 import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { open, readdir, stat } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
-import { CLAUDE_DIR } from './env.mjs';
+import { CLAUDE_DIR, projectSlug } from './env.mjs';
 
 const DAYS = 7;
 const cache = new Map(); // file -> { mtimeMs, size, entries: Map(messageId -> { day, usage }) }
+const answers = new Map(); // file -> { mtimeMs, size, at }
+const TAIL = 256 * 1024;
+
+// When Claude last answered in a session, from the end of its transcript; null when that is not known.
+// Opening or renaming a session also changes the file, so its change time does not tell this.
+export async function lastAnswer(sessionId, cwd) {
+  const file = path.join(CLAUDE_DIR, 'projects', projectSlug(cwd), `${sessionId}.jsonl`);
+  const s = await stat(file).catch(() => null);
+  if (!s) return null;
+  const c = answers.get(file);
+  if (c && c.mtimeMs === s.mtimeMs && c.size === s.size) return c.at;
+  const at = await lastAnswerIn(file, s.size).catch(() => null);
+  answers.set(file, { mtimeMs: s.mtimeMs, size: s.size, at });
+  return at;
+}
+
+async function lastAnswerIn(file, size) {
+  const fh = await open(file, 'r');
+  try {
+    const len = Math.min(size, TAIL);
+    const buf = Buffer.alloc(len);
+    await fh.read(buf, 0, len, size - len);
+    const lines = buf.toString('utf8').split('\n');
+    if (len < size) lines.shift(); // starts in the middle of a line
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"assistant"')) continue;
+      try {
+        const e = JSON.parse(lines[i]);
+        const at = e.type === 'assistant' && !e.isSidechain && Date.parse(e.timestamp);
+        if (at) return at;
+      } catch {}
+    }
+    return null;
+  } finally {
+    await fh.close();
+  }
+}
 
 async function* walk(dir) {
   let items = [];

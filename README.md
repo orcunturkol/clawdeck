@@ -74,6 +74,9 @@ To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
   with a live status and the Bash shells each one runs (command, time, ports,
   Stop). Stop ends the shell's process group. Click a session to read it; a
   session that runs elsewhere opens read only and follows new messages.
+- Both session lists show the session Claude answered in last first. The time
+  comes from the last answer in the transcript, so opening a session does not
+  move it.
 - Icons are 16×16 one-bit pixel drawings in `assets/icons` (made with the
   pixellab-artist agent). `npm run icons` turns them into SVG paths in
   `src/icons.js`; they take the text color, and one icon pixel always covers a

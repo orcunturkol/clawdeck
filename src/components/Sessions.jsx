@@ -105,7 +105,7 @@ export default function Sessions({ cwd, recent, sessions, activeId, running, onN
                 onClick={() => (r && !r.mine ? onView(r) : onOpen(s.sessionId))}
               >
                 <span className="session-title">{r && <span className="led" />}{s.customTitle || s.summary || 'Untitled session'}</span>
-                <span className="session-meta">{r ? `running in ${where(r)}` : ago(s.lastModified)}{s.gitBranch ? `, ${s.gitBranch}` : ''}</span>
+                <span className="session-meta">{r ? `running in ${where(r)}` : ago(s.lastAnswer || s.lastModified)}{s.gitBranch ? `, ${s.gitBranch}` : ''}</span>
               </button>
             );
           })}
