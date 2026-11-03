@@ -14,7 +14,7 @@ To build the Windows packages yourself: `npm run dist:win` (on Windows, or on Li
 
 The Claude Code that comes with the Claude desktop app updates with that app, not with `claude update`.
 
-On Windows, signing in to an extra account inside Clawdeck is not available yet; paste a token from `claude setup-token` instead.
+To add another Claude account, click **Add account** in the Accounts section and sign in in the window that opens. No token is needed. Clawdeck runs `claude setup-token` in a hidden terminal and keeps the token encrypted.
 
 ## Linux requirements
 

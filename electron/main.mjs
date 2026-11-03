@@ -397,7 +397,7 @@ function keyringReady() {
 // Sign in inside Clawdeck: Claude Code makes the token, Clawdeck keeps it.
 let signingIn = false;
 async function signInAccount() {
-  if (process.platform !== 'linux') throw new Error('Sign-in inside Clawdeck works on Linux only. Paste a token instead.');
+  if (process.platform !== 'linux' && !IS_WIN) throw new Error('Sign-in inside Clawdeck works on Linux and Windows only. Paste a token instead.');
   if (!keyringReady()) throw new Error('No system keyring is available, so Clawdeck cannot store the token safely.');
   if (signingIn) throw new Error('A sign-in window is open already.');
   signingIn = true;

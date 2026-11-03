@@ -91,8 +91,8 @@ function AddAccount({ onDone }) {
   );
 }
 
-// Linux signs in inside Clawdeck; elsewhere the user pastes a token.
-const SIGN_IN = window.deck.platform === 'linux';
+// Linux and Windows sign in inside Clawdeck; elsewhere the user pastes a token.
+const SIGN_IN = ['linux', 'win32'].includes(window.deck.platform);
 
 export default function AccountsSection({ accounts, chatAccount }) {
   const [adding, setAdding] = useState(false);

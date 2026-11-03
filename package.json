@@ -1,7 +1,7 @@
 {
   "name": "clawdeck",
   "productName": "Clawdeck",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Desktop app for Claude Code on Linux and Windows",
   "private": true,
   "type": "module",
@@ -52,12 +52,19 @@
     "directories": {
       "output": "release"
     },
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
     "files": [
       "dist/**",
       "electron/**",
       "assets/icon.png",
       "package.json",
-      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+      "!node_modules/node-pty/**/*.pdb",
+      "!node_modules/node-pty/prebuilds/{darwin-*,win32-arm64}/**",
+      "!node_modules/node-pty/{deps,src,third_party}/**"
     ],
     "win": {
       "target": [
@@ -89,5 +96,8 @@
       "icon": "assets/icon.png",
       "category": "Development"
     }
+  },
+  "optionalDependencies": {
+    "node-pty": "1.1.0"
   }
 }
