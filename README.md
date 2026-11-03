@@ -55,6 +55,9 @@ To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
   SDK `canUseTool` callback and show in the chat.
 - The Web search switch uses a `PreToolUse` hook. When it is off, the hook
   denies `WebSearch` and `WebFetch`. The switch works in a running session.
+- The Ultracode switch in the Session section sets `ultracode` through
+  `applyFlagSettings`. It is on for that chat only, and stays on when the
+  chat's process starts again. It is never saved as a default.
 - The Browser pane is a real Chromium view in the window. Claude drives it
   through an in-process MCP server (`electron/browserTools.mjs`) with tools to
   open, read, click, type, press keys, scroll, go back and take a screenshot.

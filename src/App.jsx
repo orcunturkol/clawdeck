@@ -26,7 +26,7 @@ function bridgeState(c, m) {
 
 // Everything one chat needs on screen. Each open chat keeps its own copy.
 const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off', settings: null });
-const NO_SETTINGS = { model: '', effort: '', mode: 'default' };
+const NO_SETTINGS = { model: '', effort: '', ultracode: false, mode: 'default' };
 
 export default function App() {
   const [cwd, setCwd] = useState('');
@@ -258,6 +258,7 @@ export default function App() {
   const setMode = (mode) => change('mode', mode, 'session:setMode', { mode });
   const setModel = (model) => change('model', model, 'session:setModel', { model: model === 'default' ? '' : model });
   const setEffort = (effort) => change('effort', effort, 'session:setEffort', { effort });
+  const setUltracode = (on) => change('ultracode', on, 'session:setUltracode', { on });
   const setAccount = (account) => change('account', account, 'session:setAccount', { account });
   const chatAccount = accounts?.list.find((a) => a.id === cur.account);
 
@@ -367,7 +368,7 @@ export default function App() {
         <Panel
           init={init} cwd={cwd} rev={rev} turns={cur.turns} sessionCost={cur.cost} accounts={accounts}
           liveLimits={chatAccount?.usage} chatAccount={chatAccount}
-          settings={settings} setModel={setModel} setEffort={setEffort} setMode={setMode} setAccount={setAccount}
+          settings={settings} setModel={setModel} setEffort={setEffort} setUltracode={setUltracode} setMode={setMode} setAccount={setAccount}
           onInsert={(text) => setDraft(text)} onPluginsChanged={onPluginsChanged}
         />
       )}

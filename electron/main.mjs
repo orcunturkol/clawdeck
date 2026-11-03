@@ -141,7 +141,7 @@ function accountOptions(own, current = null) {
 function restartSession(s, { continued = false, quiet = false } = {}) {
   s.close();
   const next = new Session({
-    cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, permissionMode: s.settings.mode,
+    cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, ultracode: s.settings.ultracode, permissionMode: s.settings.mode,
     webSearch: state.webSearch, claudePath, emit: sessionEmit, mcpServers: { clawdeck: browserServer(pane) },
     ...accountOptions(s.settings.account, s.account),
   });
@@ -176,9 +176,9 @@ async function startSession({ cwd, resume }) {
     return { sessionId: live.id, cwd: dir, live: true, settings: live.settings, account: live.account };
   }
   // A chat opened again keeps its own values; a new one starts with the saved defaults and the folder's account.
-  const { model, effort, mode, account } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
+  const { model, effort, ultracode, mode, account } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
   const s = new Session({
-    cwd, resume, model, effort, permissionMode: mode || 'default', webSearch: state.webSearch, claudePath, emit: sessionEmit,
+    cwd, resume, model, effort, ultracode, permissionMode: mode || 'default', webSearch: state.webSearch, claudePath, emit: sessionEmit,
     mcpServers: { clawdeck: browserServer(pane) }, ...accountOptions(account || accounts.forFolder(dir)),
   });
   s.lastUsed = Date.now();
@@ -272,8 +272,14 @@ const handlers = {
   },
   'session:setEffort': async ({ sessionId, effort }) => {
     const s = need(sessionId);
-    await s.q.applyFlagSettings({ effortLevel: effort || null });
+    // A new effort level alone turns ultracode off, so send it along to keep it on.
+    await s.q.applyFlagSettings({ effortLevel: effort || null, ...(s.settings.ultracode && { ultracode: true }) });
     s.set({ effort: effort || '' });
+  },
+  'session:setUltracode': async ({ sessionId, on }) => {
+    const s = need(sessionId);
+    await s.q.applyFlagSettings({ ultracode: Boolean(on) });
+    s.set({ ultracode: Boolean(on) });
   },
   'session:setWebSearch': ({ on }) => {
     state.webSearch = Boolean(on);
