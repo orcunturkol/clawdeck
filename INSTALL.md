@@ -45,6 +45,18 @@ Clawdeck looks for a new release at start and every 6 hours. When there is one, 
 
 To update by hand on Linux, run `git pull` and `npm run setup`, then open Clawdeck again.
 
+## Release a new version
+
+1. Change `version` in `package.json` (for example to `0.3.0`). Commit and push to `main`.
+2. Tag the commit and push the tag: `git tag v0.3.0 && git push origin v0.3.0`.
+3. The Release workflow (`.github/workflows/release.yml`) builds the Windows files and publishes the release. It stops if the tag is not `v` plus the `package.json` version.
+
+The release must have `latest.yml` and the `.exe.blockmap` next to the installer, because the Windows updater reads them. To publish by hand, run `npm run dist:win`, then:
+
+```sh
+gh release create v0.3.0 release/Clawdeck-0.3.0-win-x64.exe release/Clawdeck-0.3.0-win-x64.exe.blockmap release/Clawdeck-0.3.0-win-x64.zip release/latest.yml
+```
+
 ## Uninstall
 
 ```sh

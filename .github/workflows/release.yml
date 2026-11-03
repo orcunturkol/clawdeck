@@ -1,0 +1,37 @@
+# Push a tag v<version> (the version in package.json) to publish a release.
+# Windows installs update from its files; Linux clones update with git pull.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # The updater finds the files by version, so the tag and package.json must agree.
+      - name: Check the tag
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$v" ]; then echo "Tag $GITHUB_REF_NAME is not v$v from package.json."; exit 1; fi
+      - run: npm ci
+      - run: npm run dist:win
+      - name: Publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          gh release create "$GITHUB_REF_NAME" --title "Clawdeck $v" --generate-notes \
+            "release/Clawdeck-$v-win-x64.exe" "release/Clawdeck-$v-win-x64.exe.blockmap" \
+            "release/Clawdeck-$v-win-x64.zip" release/latest.yml
