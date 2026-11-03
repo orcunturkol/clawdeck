@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 // One live Claude Code process. Prompts go in through an open input stream.
 export class Session {
-  constructor({ cwd, resume, id, model, effort, permissionMode, webSearch = true, mcpServers, claudePath, emit, account, own, env }) {
+  constructor({ cwd, resume, id, model, effort, ultracode, permissionMode, webSearch = true, mcpServers, claudePath, emit, account, own, env }) {
     this.cwd = cwd;
     this.id = resume || id || randomUUID();
     this.fresh = !resume; // no message yet, so no history file to resume
@@ -17,7 +17,7 @@ export class Session {
     this.webSearch = webSearch;
     this.account = account; // the account this process runs on
     // own = the chat's account; it differs from account only while automatic switching covers a limit
-    this.settings = { model: model || '', effort: effort || '', mode: permissionMode || 'default', account: own || account };
+    this.settings = { model: model || '', effort: effort || '', ultracode: Boolean(ultracode), mode: permissionMode || 'default', account: own || account };
     this.remote = false;
     this.sent = new Set(); // uuids of prompts this app sent
 
@@ -36,6 +36,8 @@ export class Session {
     if (resume) options.resume = resume; else options.sessionId = this.id;
     if (model) options.model = model;
     if (effort) options.effort = effort;
+    // Ultracode is session only, so a chat that starts again turns it on through flag settings.
+    if (ultracode) options.settings = { ultracode: true };
     if (permissionMode) options.permissionMode = permissionMode;
     if (mcpServers) options.mcpServers = mcpServers;
     if (env) options.env = env;

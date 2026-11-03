@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { call } from '../api.js';
 import Section from './Section.jsx';
 import Meter from './Meter.jsx';
+import Switch from './Switch.jsx';
 import { MODES } from '../components/Composer.jsx';
 import { tokens, folderPath } from '../format.js';
 
-export default function SessionSection({ init, settings, setModel, setEffort, setMode, setAccount, cwd, turns, sessionCost, chatAccount, accounts }) {
+export default function SessionSection({ init, settings, setModel, setEffort, setUltracode, setMode, setAccount, cwd, turns, sessionCost, chatAccount, accounts }) {
   const [context, setContext] = useState(null);
   const [saved, setSaved] = useState('');
   const models = init?.models || [];
@@ -61,6 +62,10 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
           {efforts.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
       </label>
+      <div className="switch-line" title="Claude plans each task as a workflow and runs it with many agents. Uses far more tokens. This chat only.">
+        <span>Ultracode</span>
+        <Switch on={Boolean(settings.ultracode)} onChange={setUltracode} label="Turn ultracode on or off" busy={!init} />
+      </div>
       <label className="field">
         <span>Permissions</span>
         <select value={settings.mode} disabled={!init} onChange={(e) => setMode(e.target.value)}>

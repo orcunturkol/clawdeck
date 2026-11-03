@@ -55,6 +55,9 @@ To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
   SDK `canUseTool` callback and show in the chat.
 - The Web search switch uses a `PreToolUse` hook. When it is off, the hook
   denies `WebSearch` and `WebFetch`. The switch works in a running session.
+- The Ultracode switch in the Session section sets `ultracode` through
+  `applyFlagSettings`. It is on for that chat only, and stays on when the
+  chat's process starts again. It is never saved as a default.
 - The Browser pane is a real Chromium view in the window. Claude drives it
   through an in-process MCP server (`electron/browserTools.mjs`) with tools to
   open, read, click, type, press keys, scroll, go back and take a screenshot.
@@ -71,6 +74,13 @@ To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
   with a live status and the Bash shells each one runs (command, time, ports,
   Stop). Stop ends the shell's process group. Click a session to read it; a
   session that runs elsewhere opens read only and follows new messages.
+- Both session lists show the session Claude answered in last first. The time
+  comes from the last answer in the transcript, so opening or renaming a session
+  does not move it. The pencil on a row renames the session; a chat of this
+  window takes the name through its own process.
+- Updates come from GitHub Releases (`electron/update.mjs`). The Windows install
+  uses `electron-updater` and installs on restart, with no installer window. A
+  Linux clone runs `git pull --ff-only` and `npm run setup`, then opens again.
 - Icons are 16×16 one-bit pixel drawings in `assets/icons` (made with the
   pixellab-artist agent). `npm run icons` turns them into SVG paths in
   `src/icons.js`; they take the text color, and one icon pixel always covers a

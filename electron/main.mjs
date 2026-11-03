@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage } from 'electron';
-import { listSessions, getSessionMessages, getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk';
+import { listSessions, getSessionMessages, getSessionInfo, renameSession, query } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, writeFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
 import path from 'node:path';
@@ -7,12 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { loadLoginPath, findClaude, HOME, IS_WIN } from './env.mjs';
 import { Session } from './session.mjs';
 import * as config from './config.mjs';
-import { dailyTokens } from './usage.mjs';
+import { dailyTokens, lastAnswer } from './usage.mjs';
 import { BrowserPane } from './browser.mjs';
 import { browserServer } from './browserTools.mjs';
 import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
+import { Updater } from './update.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -33,6 +34,7 @@ const sessions = new Map(); // sessionId -> Session
 let activeId = null;
 const titles = new Map(); // sessionId -> { title, at }
 let accounts = null; // made when the app is ready, because the keyring needs that
+let updater = null;
 
 // Session titles come from the transcript; read each one at most every 30 s.
 async function sessionTitle(id, cwd) {
@@ -43,6 +45,12 @@ async function sessionTitle(id, cwd) {
   // A new session has no title yet; ask again after 5 s.
   titles.set(id, { title, at: title ? Date.now() : Date.now() - 25000 });
   return title;
+}
+
+// The session Claude answered in last comes first. Without an answer in the transcript, `since` counts.
+async function byLastAnswer(list, cwdOf, since) {
+  for (const r of list) r.lastAnswer = (await lastAnswer(r.sessionId, cwdOf(r))) || since(r) || 0;
+  return list.sort((a, b) => b.lastAnswer - a.lastAnswer);
 }
 let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {} };
 
@@ -141,7 +149,7 @@ function accountOptions(own, current = null) {
 function restartSession(s, { continued = false, quiet = false } = {}) {
   s.close();
   const next = new Session({
-    cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, permissionMode: s.settings.mode,
+    cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, ultracode: s.settings.ultracode, permissionMode: s.settings.mode,
     webSearch: state.webSearch, claudePath, emit: sessionEmit, mcpServers: { clawdeck: browserServer(pane) },
     ...accountOptions(s.settings.account, s.account),
   });
@@ -176,9 +184,9 @@ async function startSession({ cwd, resume }) {
     return { sessionId: live.id, cwd: dir, live: true, settings: live.settings, account: live.account };
   }
   // A chat opened again keeps its own values; a new one starts with the saved defaults and the folder's account.
-  const { model, effort, mode, account } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
+  const { model, effort, ultracode, mode, account } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
   const s = new Session({
-    cwd, resume, model, effort, permissionMode: mode || 'default', webSearch: state.webSearch, claudePath, emit: sessionEmit,
+    cwd, resume, model, effort, ultracode, permissionMode: mode || 'default', webSearch: state.webSearch, claudePath, emit: sessionEmit,
     mcpServers: { clawdeck: browserServer(pane) }, ...accountOptions(account || accounts.forFolder(dir)),
   });
   s.lastUsed = Date.now();
@@ -221,6 +229,8 @@ const handlers = {
   'win:close': () => win.close(),
 
   'app:state': () => ({ ...state, home: HOME, claudePath }),
+  'app:updateState': () => updater.view(),
+  'app:update': () => updater.install(),
   'dir:pick': async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], defaultPath: state.cwd });
     return r.canceled ? null : r.filePaths[0];
@@ -272,8 +282,14 @@ const handlers = {
   },
   'session:setEffort': async ({ sessionId, effort }) => {
     const s = need(sessionId);
-    await s.q.applyFlagSettings({ effortLevel: effort || null });
+    // A new effort level alone turns ultracode off, so send it along to keep it on.
+    await s.q.applyFlagSettings({ effortLevel: effort || null, ...(s.settings.ultracode && { ultracode: true }) });
     s.set({ effort: effort || '' });
+  },
+  'session:setUltracode': async ({ sessionId, on }) => {
+    const s = need(sessionId);
+    await s.q.applyFlagSettings({ ultracode: Boolean(on) });
+    s.set({ ultracode: Boolean(on) });
   },
   'session:setWebSearch': ({ on }) => {
     state.webSearch = Boolean(on);
@@ -303,13 +319,24 @@ const handlers = {
       r.mine = sessions.has(r.sessionId);
       r.active = r.sessionId === activeId;
     }
-    return shown;
+    return byLastAnswer(shown, (r) => r.cwd, (r) => r.startedAt);
   },
   'running:stop': ({ pid, start }) => stopShell(pid, start),
   'session:context': ({ sessionId }) => need(sessionId).q.getContextUsage({ detail: 'summary' }),
 
-  'sessions:list': ({ cwd }) => listSessions({ dir: cwd, limit: 60 }),
+  'sessions:list': async ({ cwd }) => byLastAnswer(await listSessions({ dir: cwd, limit: 60 }), (s) => s.cwd || cwd, (s) => s.lastModified),
   'sessions:messages': ({ id, cwd }) => getSessionMessages(id, { dir: cwd }),
+  'sessions:rename': async ({ id, cwd, title }) => {
+    const name = String(title || '').trim();
+    if (!name) throw new Error('Give the session a name.');
+    const s = sessions.get(id);
+    const dir = s?.cwd || cwd;
+    // A live chat must take the name itself, or its process writes the old one back. Not in the SDK types yet.
+    if (s && typeof s.q.renameSession === 'function') await s.q.renameSession(name, id);
+    // Any other session, or one whose process did not write the name: it goes into the transcript directly.
+    if ((await getSessionInfo(id, { dir }).catch(() => null))?.customTitle !== name) await renameSession(id, name, { dir });
+    titles.delete(id);
+  },
 
   'mcp:status': async () => config.redactMcp(await need().q.mcpServerStatus()),
   'mcp:toggle': ({ name, enabled }) => need().q.toggleMcpServer(name, enabled),
@@ -475,6 +502,10 @@ app.whenReady().then(async () => {
   // Limit marks clear when the limits reset, also while nobody writes.
   setInterval(() => emit({ type: 'accounts', view: accounts.view() }), 60000);
   createWindow();
+  // Looks for a new release at start and every 6 hours.
+  updater = new Updater({ root: ROOT, emit, beforeQuit: () => { for (const s of sessions.values()) s.close(); } });
+  setTimeout(() => updater.check(), 10000);
+  setInterval(() => updater.check(), 6 * 3600 * 1000);
 });
 
 app.on('window-all-closed', () => {

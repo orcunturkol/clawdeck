@@ -37,12 +37,25 @@ npm 12 does not run install scripts, so `npm run setup` downloads Electron itsel
 
 ## Update
 
-```sh
-git pull
-npm run setup
-```
+Clawdeck looks for a new release at start and every 6 hours. When there is one, the top bar shows a button.
 
-Close and open Clawdeck again after an update.
+- **Windows (installer):** Clawdeck downloads the update in the background. Click **Restart to update**. The update installs without an installer window, and Clawdeck opens again. If you close Clawdeck instead, the update installs when it closes.
+- **Linux (git clone):** click **Update to x.y.z**. Clawdeck runs `git pull --ff-only` and `npm run setup`, then opens again. If a step fails (for example, local changes block `git pull`), Clawdeck shows the error and does not close.
+- **Windows (portable zip):** the button opens the release page. Download the new zip.
+
+To update by hand on Linux, run `git pull` and `npm run setup`, then open Clawdeck again.
+
+## Release a new version
+
+1. Change `version` in `package.json` (for example to `0.3.0`). Commit and push to `main`.
+2. Tag the commit and push the tag: `git tag v0.3.0 && git push origin v0.3.0`.
+3. The Release workflow (`.github/workflows/release.yml`) builds the Windows files and publishes the release. It stops if the tag is not `v` plus the `package.json` version.
+
+The release must have `latest.yml` and the `.exe.blockmap` next to the installer, because the Windows updater reads them. To publish by hand, run `npm run dist:win`, then:
+
+```sh
+gh release create v0.3.0 release/Clawdeck-0.3.0-win-x64.exe release/Clawdeck-0.3.0-win-x64.exe.blockmap release/Clawdeck-0.3.0-win-x64.zip release/latest.yml
+```
 
 ## Uninstall
 

@@ -26,7 +26,7 @@ function bridgeState(c, m) {
 
 // Everything one chat needs on screen. Each open chat keeps its own copy.
 const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off', settings: null });
-const NO_SETTINGS = { model: '', effort: '', mode: 'default' };
+const NO_SETTINGS = { model: '', effort: '', ultracode: false, mode: 'default' };
 
 export default function App() {
   const [cwd, setCwd] = useState('');
@@ -43,6 +43,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [webSearch, setWebSearchState] = useState(true);
   const [running, setRunning] = useState([]);
+  const [update, setUpdate] = useState(null);
   const [railTab, setRailTab] = useState('folder');
   const railTabRef = useRef(railTab);
   railTabRef.current = railTab;
@@ -129,6 +130,7 @@ export default function App() {
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
       call('accounts:list').then(setAccounts).catch(() => {});
+      call('app:updateState').then(setUpdate).catch(() => {});
       setCwd(st.cwd);
       start(st.cwd);
     })();
@@ -140,6 +142,7 @@ export default function App() {
     if (e.type === 'browser-open') { setSide('browser'); return; }
     if (e.type === 'browser-state') { setBrowser(e.state); return; }
     if (e.type === 'accounts') { setAccounts(e.view); return; }
+    if (e.type === 'update') { setUpdate(e.update); return; }
     if (e.type === 'open-folder') { openFolderRef.current(e.cwd); return; }
     const id = e.sessionId;
     if (!id) return;
@@ -229,6 +232,14 @@ export default function App() {
     setTimeout(() => call('running:list').then(setRunning).catch(() => {}), 600);
   };
 
+  const rename = async (id, dir, title) => {
+    try {
+      await call('sessions:rename', { id, cwd: dir, title });
+    } catch (e) { setError(e.message); }
+    loadSessions(cwdRef.current);
+    call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
+  };
+
   const stopShell = async (sh) => {
     if (!window.confirm(`Stop this shell and the programs it started?\n\n${sh.command.split('\n')[0]}`)) return;
     try {
@@ -258,6 +269,7 @@ export default function App() {
   const setMode = (mode) => change('mode', mode, 'session:setMode', { mode });
   const setModel = (model) => change('model', model, 'session:setModel', { model: model === 'default' ? '' : model });
   const setEffort = (effort) => change('effort', effort, 'session:setEffort', { effort });
+  const setUltracode = (on) => change('ultracode', on, 'session:setUltracode', { on });
   const setAccount = (account) => change('account', account, 'session:setAccount', { account });
   const chatAccount = accounts?.list.find((a) => a.id === cur.account);
 
@@ -276,6 +288,16 @@ export default function App() {
     } catch (e) {
       patch(id, () => ({ remote: 'off', error: `Remote control did not start. ${e.message}` }));
     }
+  };
+
+  // Clawdeck closes and opens again on the new version, so working chats stop.
+  const runUpdate = () => {
+    if (update.how !== 'page') {
+      const working = runningRef.current.filter((r) => r.mine && r.status !== 'idle').length;
+      const note = !working ? '' : working === 1 ? '\n\nA chat is working. It will stop.' : `\n\n${working} chats are working. They will stop.`;
+      if (!window.confirm(`Update Clawdeck to ${update.version}? Clawdeck closes and opens again.${note}`)) return;
+    }
+    call('app:update').catch((e) => setError(e.message));
   };
 
   const setWebSearch = (on) => {
@@ -322,12 +344,12 @@ export default function App() {
     <div className={`app side-${side}`}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
-        account={chatAccount} onAccount={() => setSide('panel')}
+        account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate}
       />
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
-        onView={view} onStopShell={stopShell} onCloseChat={closeChat} onPickDir={pickDir} onDir={openFolder}
+        onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
         tab={railTab} setTab={setRailTab}
       />
       <main className="chat">
@@ -367,7 +389,7 @@ export default function App() {
         <Panel
           init={init} cwd={cwd} rev={rev} turns={cur.turns} sessionCost={cur.cost} accounts={accounts}
           liveLimits={chatAccount?.usage} chatAccount={chatAccount}
-          settings={settings} setModel={setModel} setEffort={setEffort} setMode={setMode} setAccount={setAccount}
+          settings={settings} setModel={setModel} setEffort={setEffort} setUltracode={setUltracode} setMode={setMode} setAccount={setAccount}
           onInsert={(text) => setDraft(text)} onPluginsChanged={onPluginsChanged}
         />
       )}
