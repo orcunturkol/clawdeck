@@ -13,6 +13,7 @@ import { browserServer } from './browserTools.mjs';
 import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
+import { Updater } from './update.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -33,6 +34,7 @@ const sessions = new Map(); // sessionId -> Session
 let activeId = null;
 const titles = new Map(); // sessionId -> { title, at }
 let accounts = null; // made when the app is ready, because the keyring needs that
+let updater = null;
 
 // Session titles come from the transcript; read each one at most every 30 s.
 async function sessionTitle(id, cwd) {
@@ -227,6 +229,8 @@ const handlers = {
   'win:close': () => win.close(),
 
   'app:state': () => ({ ...state, home: HOME, claudePath }),
+  'app:updateState': () => updater.view(),
+  'app:update': () => updater.install(),
   'dir:pick': async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], defaultPath: state.cwd });
     return r.canceled ? null : r.filePaths[0];
@@ -498,6 +502,10 @@ app.whenReady().then(async () => {
   // Limit marks clear when the limits reset, also while nobody writes.
   setInterval(() => emit({ type: 'accounts', view: accounts.view() }), 60000);
   createWindow();
+  // Looks for a new release at start and every 6 hours.
+  updater = new Updater({ root: ROOT, emit, beforeQuit: () => { for (const s of sessions.values()) s.close(); } });
+  setTimeout(() => updater.check(), 10000);
+  setInterval(() => updater.check(), 6 * 3600 * 1000);
 });
 
 app.on('window-all-closed', () => {

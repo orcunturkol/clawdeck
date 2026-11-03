@@ -392,6 +392,8 @@ button.icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; s
 .account-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 13px; background: none; color: var(--ink-2); max-width: 240px; }
 .account-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-chip.blocked .pix { color: var(--red); }
+.update-chip { color: var(--amber-text); }
+.update-chip:disabled { opacity: 1; color: var(--ink-2); }
 
 .meter { display: grid; gap: 5px; }
 .meter-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }

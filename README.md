@@ -78,6 +78,9 @@ To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
   comes from the last answer in the transcript, so opening or renaming a session
   does not move it. The pencil on a row renames the session; a chat of this
   window takes the name through its own process.
+- Updates come from GitHub Releases (`electron/update.mjs`). The Windows install
+  uses `electron-updater` and installs on restart, with no installer window. A
+  Linux clone runs `git pull --ff-only` and `npm run setup`, then opens again.
 - Icons are 16×16 one-bit pixel drawings in `assets/icons` (made with the
   pixellab-artist agent). `npm run icons` turns them into SVG paths in
   `src/icons.js`; they take the text color, and one icon pixel always covers a

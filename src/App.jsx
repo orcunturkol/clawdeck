@@ -43,6 +43,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [webSearch, setWebSearchState] = useState(true);
   const [running, setRunning] = useState([]);
+  const [update, setUpdate] = useState(null);
   const [railTab, setRailTab] = useState('folder');
   const railTabRef = useRef(railTab);
   railTabRef.current = railTab;
@@ -129,6 +130,7 @@ export default function App() {
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
       call('accounts:list').then(setAccounts).catch(() => {});
+      call('app:updateState').then(setUpdate).catch(() => {});
       setCwd(st.cwd);
       start(st.cwd);
     })();
@@ -140,6 +142,7 @@ export default function App() {
     if (e.type === 'browser-open') { setSide('browser'); return; }
     if (e.type === 'browser-state') { setBrowser(e.state); return; }
     if (e.type === 'accounts') { setAccounts(e.view); return; }
+    if (e.type === 'update') { setUpdate(e.update); return; }
     if (e.type === 'open-folder') { openFolderRef.current(e.cwd); return; }
     const id = e.sessionId;
     if (!id) return;
@@ -287,6 +290,16 @@ export default function App() {
     }
   };
 
+  // Clawdeck closes and opens again on the new version, so working chats stop.
+  const runUpdate = () => {
+    if (update.how !== 'page') {
+      const working = runningRef.current.filter((r) => r.mine && r.status !== 'idle').length;
+      const note = !working ? '' : working === 1 ? '\n\nA chat is working. It will stop.' : `\n\n${working} chats are working. They will stop.`;
+      if (!window.confirm(`Update Clawdeck to ${update.version}? Clawdeck closes and opens again.${note}`)) return;
+    }
+    call('app:update').catch((e) => setError(e.message));
+  };
+
   const setWebSearch = (on) => {
     setWebSearchState(on);
     call('session:setWebSearch', { on }).catch((e) => setError(e.message));
@@ -331,7 +344,7 @@ export default function App() {
     <div className={`app side-${side}`}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
-        account={chatAccount} onAccount={() => setSide('panel')}
+        account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate}
       />
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
