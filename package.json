@@ -1,8 +1,8 @@
 {
   "name": "clawdeck",
   "productName": "Clawdeck",
-  "version": "0.1.0",
-  "description": "Linux desktop app for Claude Code",
+  "version": "0.2.0",
+  "description": "Desktop app for Claude Code on Linux and Windows",
   "private": true,
   "type": "module",
   "main": "electron/main.mjs",
@@ -13,8 +13,6 @@
     "app": "electron .",
     "shot": "node scripts/shot.mjs",
     "install-desktop": "sh scripts/install-desktop.sh",
-    "setup-voice": "sh scripts/setup-voice.sh",
-    "setup-tts": "sh scripts/setup-tts.sh",
     "icons": "node scripts/icons.mjs",
     "app-icon": "node scripts/app-icon.mjs",
     "dist:win": "vite build && electron-builder --win --x64",
@@ -52,13 +50,8 @@
       "dist/**",
       "electron/**",
       "assets/icon.png",
-      "scripts/setup-*",
       "package.json",
       "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
-    ],
-    "asarUnpack": [
-      "electron/tts_worker.py",
-      "scripts/**"
     ],
     "win": {
       "target": [

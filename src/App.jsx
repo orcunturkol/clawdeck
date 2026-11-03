@@ -8,15 +8,11 @@ import Transcript from './components/Transcript.jsx';
 import Composer from './components/Composer.jsx';
 import Panel from './panel/Panel.jsx';
 import BrowserPane from './components/BrowserPane.jsx';
-import { isTurkish, speechChunks, speak, stopSpeaking, onSpeaking } from './speech.js';
+import LoginBar from './components/LoginBar.jsx';
 
-// The final answer of the last turn: the text after the turn's last tool or thought.
-function lastAnswer(items) {
-  const turn = items.slice(items.map((i) => i.kind).lastIndexOf('user') + 1).filter((i) => i.kind !== 'result');
-  let from = turn.length;
-  while (from > 0 && turn[from - 1].kind === 'text') from--;
-  return turn.slice(from).map((i) => i.text).join('\n\n');
-}
+// Claude Code answers this way when it has no login on this computer.
+const loggedOut = (m) => (m.type === 'assistant' && m.error === 'authentication_failed')
+  || (m.type === 'result' && m.is_error && /not logged in/i.test(String(m.result || '')));
 
 // Remote control link states from Claude Code; a switched-off chat ignores late ones.
 function bridgeState(c, m) {
@@ -50,9 +46,6 @@ export default function App() {
   const [railTab, setRailTab] = useState('folder');
   const railTabRef = useRef(railTab);
   railTabRef.current = railTab;
-  const [readAloud, setReadAloudState] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const [install, setInstall] = useState(null); // { what, line, done }
   const [viewing, setViewing] = useState(null); // a session that runs in another process, read only
   const [viewT, setViewT] = useState(null);
   const runningRef = useRef(running);
@@ -65,8 +58,6 @@ export default function App() {
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const drafts = useRef({});
-  const spoken = useRef({});
-  const lastShown = useRef(null);
   home.cwd = cwd;
 
   const patch = useCallback((id, fn) => {
@@ -101,7 +92,13 @@ export default function App() {
     drafts.current[prev] = draftRef.current;
     setError('');
     // The main process picks the chat's model, effort and mode: its own ones, or the saved defaults.
-    const r = await call('session:start', { cwd: dir, resume });
+    let r;
+    try {
+      r = await call('session:start', { cwd: dir, resume });
+    } catch (e) {
+      setError(e.message);
+      return;
+    }
     current.current = r.sessionId;
     setSessionId(r.sessionId);
     setDraft(drafts.current[r.sessionId] || '');
@@ -131,9 +128,7 @@ export default function App() {
       home.dir = st.home;
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
-      setReadAloudState(Boolean(st.readAloud));
       call('accounts:list').then(setAccounts).catch(() => {});
-      if (st.readAloud) call('tts:setEnabled', { on: true }).catch(() => {});
       setCwd(st.cwd);
       start(st.cwd);
     })();
@@ -144,8 +139,8 @@ export default function App() {
     if (e.type === 'window') { setMaximized(e.maximized); return; }
     if (e.type === 'browser-open') { setSide('browser'); return; }
     if (e.type === 'browser-state') { setBrowser(e.state); return; }
-    if (e.type === 'install') { setInstall({ what: e.what, line: e.line }); return; }
     if (e.type === 'accounts') { setAccounts(e.view); return; }
+    if (e.type === 'open-folder') { openFolderRef.current(e.cwd); return; }
     const id = e.sessionId;
     if (!id) return;
     switch (e.type) {
@@ -155,6 +150,7 @@ export default function App() {
         if (m.type === 'system' && m.subtype === 'bridge_state') { patch(id, (c) => bridgeState(c, m)); break; }
         patch(id, (c) => {
           const out = { t: applyMessage(c.t, m) };
+          if (loggedOut(m) && (c.account || 'login') === 'login') out.loginNeeded = true;
           if (m.type === 'system' && m.subtype === 'init' && c.init) out.init = { ...c.init, sysinit: m };
           if (m.type === 'result') {
             out.turns = c.turns + 1;
@@ -181,31 +177,17 @@ export default function App() {
           account: e.account,
           remote: 'off',
           // An empty chat needs no note: the top bar and the Account menu show the change.
-          t: e.fresh ? c.t : addNotice(c.t, `${e.continued ? 'The account reached its usage limit. ' : ''}This chat now uses ${e.name}.${e.continued ? ' Clawdeck asked Claude to continue.' : ''}${c.remote !== 'off' ? ' Remote control is off.' : ''}`),
+          t: e.fresh || e.quiet ? c.t : addNotice(c.t, `${e.continued ? 'The account reached its usage limit. ' : ''}This chat now uses ${e.name}.${e.continued ? ' Clawdeck asked Claude to continue.' : ''}${c.remote !== 'off' ? ' Remote control is off.' : ''}`),
         }));
         break;
       default: break;
     }
   }), [loadSessions, patch]);
 
-  useEffect(() => onSpeaking(setSpeaking), []);
-
   const cur = (sessionId && chats[sessionId]) || blankChat();
   const t = cur.t;
   const init = cur.init;
   const settings = cur.settings || NO_SETTINGS;
-
-  // Read Turkish answers aloud when a turn of the open chat ends; switching chats reads nothing.
-  useEffect(() => {
-    if (!sessionId) return;
-    const prev = spoken.current[sessionId];
-    const switched = lastShown.current !== sessionId;
-    lastShown.current = sessionId;
-    spoken.current[sessionId] = cur.turns;
-    if (!readAloud || switched || prev === undefined || cur.turns <= prev) return;
-    const text = lastAnswer(t.items);
-    if (text && isTurkish(text)) speak(speechChunks(text), setError);
-  }, [cur.turns, sessionId]);
 
   // Every Claude Code process on this PC; cheap to read, so poll it.
   useEffect(() => {
@@ -257,7 +239,6 @@ export default function App() {
 
   const send = (text, images) => {
     const id = current.current;
-    stopSpeaking();
     patch(id, (c) => ({ t: addUserPrompt(c.t, text, images), suggestion: '' }));
     call('session:send', { sessionId: id, text, images }).catch((e) => patch(id, () => ({ error: e.message })));
   };
@@ -279,37 +260,6 @@ export default function App() {
   const setEffort = (effort) => change('effort', effort, 'session:setEffort', { effort });
   const setAccount = (account) => change('account', account, 'session:setAccount', { account });
   const chatAccount = accounts?.list.find((a) => a.id === cur.account);
-
-  // Voice input and read aloud download once, after the user says yes.
-  const FEATURES = {
-    voice: { name: 'Voice input', size: 'about 570 MB (Whisper speech to text)' },
-    tts: { name: 'Read aloud', size: 'about 900 MB (Python, PyTorch and the Turkish voice)' },
-  };
-  const ensure = async (what) => {
-    const st = await call(`${what}:status`).catch(() => ({ installed: false }));
-    if (st.installed) return true;
-    if (install && !install.done) { setError('An install is already running.'); return false; }
-    const f = FEATURES[what];
-    if (!window.confirm(`${f.name} needs a one-time download of ${f.size}. Install it now?`)) return false;
-    setInstall({ what, line: 'Starting' });
-    try {
-      await call(`${what}:install`);
-      setInstall({ what, line: `${f.name} is ready.`, done: true });
-      setTimeout(() => setInstall((i) => (i?.done ? null : i)), 5000);
-      return what === 'tts'; // the voice button needs a fresh press; read aloud turns on now
-    } catch (e) {
-      setInstall(null);
-      setError(`${f.name} did not install. ${e.message}`);
-      return false;
-    }
-  };
-
-  const setReadAloud = async (on) => {
-    if (on && !(await ensure('tts'))) return;
-    setReadAloudState(on);
-    if (!on) stopSpeaking();
-    call('tts:setEnabled', { on }).catch((e) => setError(e.message));
-  };
 
   const setRemote = async (on) => {
     const id = current.current;
@@ -339,6 +289,9 @@ export default function App() {
     const live = Object.entries(chatsRef.current).find(([, c]) => c.cwd === dir && !c.ended);
     start(dir, live?.[0]);
   };
+
+  const openFolderRef = useRef(openFolder);
+  openFolderRef.current = openFolder;
 
   const pickDir = async () => {
     const dir = await call('dir:pick');
@@ -387,11 +340,11 @@ export default function App() {
         {shown?.loading
           ? <div className="transcript"><p className="muted pad">Loading session</p></div>
           : <Transcript t={shown} answer={answer} empty={empty} />}
-        {install && (
-          <div className="install-bar" role="status">
-            <span className={`led ${install.done ? '' : 'busy'}`} />
-            <span>{install.done ? install.line : `Installing ${FEATURES[install.what].name.toLowerCase()}: ${install.line}`}</span>
-          </div>
+        {!viewing && cur.loginNeeded && (
+          <LoginBar
+            onDismiss={() => patch(current.current, () => ({ loginNeeded: false }))}
+            onDone={() => patch(current.current, (c) => ({ loginNeeded: false, t: addNotice(c.t, 'Claude Code is logged in. Send your message again.') }))}
+          />
         )}
         {shownError && (
           <div className="error-bar" role="alert">
@@ -402,8 +355,7 @@ export default function App() {
         <Composer
           running={t.running} disabled={!sessionId || Boolean(viewing)} commands={init?.commands || []}
           mode={settings.mode} setMode={setMode} draft={draft} setDraft={setDraft}
-          webSearch={webSearch} setWebSearch={setWebSearch} onError={setError}
-          readAloud={readAloud} setReadAloud={setReadAloud} speaking={speaking} ensureVoice={() => ensure('voice')}
+          webSearch={webSearch} setWebSearch={setWebSearch}
           remote={cur.remote} setRemote={setRemote}
           suggestion={viewing || t.running ? '' : cur.suggestion}
           lockedText={viewing ? 'Go back to your session to write a message' : ''}

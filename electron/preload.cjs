@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-const CHANNEL = /^(win|app|dir|session|sessions|mcp|plugins|usage|hooks|memory|settings|browser|voice|running|tts|accounts):\w+$/;
+const CHANNEL = /^(win|app|dir|session|sessions|mcp|plugins|usage|hooks|memory|settings|browser|running|accounts):\w+$/;
 
 contextBridge.exposeInMainWorld('deck', {
   invoke(channel, arg) {

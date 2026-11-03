@@ -3,7 +3,7 @@ import { shortPath, tidyPaths } from '../format.js';
 import Icon from './Icon.jsx';
 
 const TOOL_ICON = {
-  Bash: 'shell', Read: 'eye', Edit: 'pencil', MultiEdit: 'pencil', NotebookEdit: 'pencil', Write: 'page-plus',
+  Bash: 'shell', PowerShell: 'shell', Read: 'eye', Edit: 'pencil', MultiEdit: 'pencil', NotebookEdit: 'pencil', Write: 'page-plus',
   Glob: 'magnifier', Grep: 'magnifier', ToolSearch: 'magnifier', WebFetch: 'download', WebSearch: 'globe',
   Agent: 'robot', Task: 'robot', TodoWrite: 'checklist', TaskCreate: 'checklist', TaskUpdate: 'checklist', Skill: 'spark',
 };
@@ -34,7 +34,7 @@ export function toolSummary(name, input = {}) {
     return input.url || input.element || input.key || (input.pixels != null ? `${input.pixels} px` : '');
   }
   switch (name) {
-    case 'Bash': return tidyPaths(input.command);
+    case 'Bash': case 'PowerShell': return tidyPaths(input.command);
     case 'Read': case 'Write': case 'Edit': case 'NotebookEdit': return shortPath(input.file_path || input.notebook_path);
     case 'Glob': return input.pattern + (input.path ? `  in ${shortPath(input.path)}` : '');
     case 'Grep': return `${input.pattern}${input.path ? `  in ${shortPath(input.path)}` : ''}`;
@@ -131,7 +131,7 @@ export function Diff({ before = '', after = '' }) {
 export function ToolInput({ name, input }) {
   if (name === 'Edit') return <Diff before={input.old_string} after={input.new_string} />;
   if (name === 'Write') return <pre className="out">{(input.content || '').slice(0, 6000)}</pre>;
-  if (name === 'Bash') return <pre className="out cmd">{input.command}</pre>;
+  if (name === 'Bash' || name === 'PowerShell') return <pre className="out cmd">{input.command}</pre>;
   if (name === 'WebSearch') return <p className="tool-note">Search the web for “{input.query}”</p>;
   if (name === 'WebFetch') return <p className="tool-note">Open {input.url}</p>;
   if (name === 'TodoWrite') {
