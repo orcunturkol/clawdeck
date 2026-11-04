@@ -1,7 +1,27 @@
 # Clawdeck
 
-A desktop app for Claude Code on Linux and Windows. It runs real Claude Code sessions with your
-login, settings, plugins, skills and MCP servers, and shows them in one window.
+An unofficial desktop app (GUI) for Claude Code on Windows and Linux, with multiple Claude accounts.
+
+Clawdeck runs real Claude Code sessions with your Claude Code login, settings, plugins, skills and
+MCP servers, and shows them in one window. Anthropic does not make Clawdeck.
+
+- **Many chats at once.** Each chat has its own Claude Code process, so a chat goes on working
+  while you read another one.
+- **Multiple Claude accounts.** Add an account in a sign-in window; you do not paste a token. Pick
+  the account of each chat, and see the usage of each account. As an option, a chat can move to a
+  free account when its account reaches its limit. Anthropic can treat this as a way around its
+  usage limits, so read the warning in the app first.
+- **Live usage.** 5-hour and weekly limits, and tokens per day.
+- **Control panel.** Model, effort, Ultracode and permission mode for each chat. MCP servers and
+  plugins on or off. Skills, commands, agents, hooks, and an editor for CLAUDE.md and memory.
+- **Approvals.** Approve or deny each edit with its diff. Answer Claude's questions and approve
+  its plans.
+- **Built-in browser.** Claude opens, reads and clicks pages in a live browser pane. You can take
+  over at any time.
+- **Running sessions.** Every Claude Code session and shell on the PC, with its ports and a Stop
+  button. Rename sessions; the session that Claude answered last is at the top.
+- **Remote control.** Continue a chat in the Claude app or on claude.ai.
+- **Updates itself** on Windows and Linux.
 
 ![Chat with tool rows, and the control panel with session settings, usage limits and MCP servers](docs/screenshots/chat.png)
 
@@ -12,19 +32,22 @@ login, settings, plugins, skills and MCP servers, and shows them in one window.
 | ![Running tab with a shell and its port](docs/screenshots/running.png) | ![Light theme](docs/screenshots/light.png) |
 | Every running chat and shell on this PC, with a Stop button. | Light and dark follow the desktop theme. |
 
-To install on Linux or Windows, see [INSTALL.md](INSTALL.md).
+To install on Windows or Linux, see [INSTALL.md](INSTALL.md).
 
 ```
 ┌──────────────┬───────────────────────────────┬────────────────────────┐
 │ Folder       │ Chat                          │ Control panel or       │
 │              │                               │ Browser pane           │
 │ New session  │  prompts, answers, tool rows, │  Session: model,       │
-│ Sessions in  │  permission prompts,          │   effort, permissions  │
-│ this folder  │  questions, web sources       │  Usage: 5-hour, weekly,│
-│              │                               │   tokens per day       │
-│              │ ┌───────────────────────────┐ │  MCP servers (on/off)  │
-│              │ │ message box               │ │  Plugins (on/off)      │
-│              │ │ mode · Web search · Send  │ │  Skills, Commands      │
+│ Sessions in  │  permission prompts,          │   effort, Ultracode,   │
+│ this folder, │  questions, web sources       │   permissions          │
+│ last answer  │                               │  Accounts: sign-in,    │
+│ first        │                               │   usage of each        │
+│              │                               │  Usage: 5-hour, weekly,│
+│ Running tab: │ ┌───────────────────────────┐ │   tokens per day       │
+│ every session│ │ message box               │ │  MCP servers (on/off)  │
+│ and shell    │ │ mode · Web search ·       │ │  Plugins (on/off)      │
+│ on this PC   │ │ Remote control · Send     │ │  Skills, Commands      │
 │              │ └───────────────────────────┘ │  Agents, Hooks         │
 │              │                               │  CLAUDE.md and memory  │
 └──────────────┴───────────────────────────────┴────────────────────────┘
