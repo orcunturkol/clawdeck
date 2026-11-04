@@ -113,6 +113,17 @@ function trim() {
   }
 }
 
+// The login's usage: live through one of its chats, else Claude Code's own cache. Neither sends a prompt.
+async function loginLimits() {
+  const s = [...sessions.values()].find((x) => x.account === LOGIN);
+  try {
+    const u = s && await s.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+    if (u?.rate_limits?.five_hour) return { live: true, limits: u.rate_limits, plan: u.subscription_type, session: u.session, at: Date.now() };
+  } catch {}
+  const c = await config.cachedLimits();
+  return { live: false, limits: c?.limits || null, at: c?.at || Date.now() };
+}
+
 // Usage per account, and the switch when an account reaches its limit.
 function watchLimits(s, m) {
   if (!s) return;
@@ -354,15 +365,12 @@ const handlers = {
   },
 
   'usage:limits': async () => {
-    // A token account cannot read the usage API, and Claude Code's cache belongs to the login; show what its chats saw last.
+    const login = await loginLimits();
+    if (login.limits) accounts.noteLimits(LOGIN, login.limits, login.at);
+    // A token account has no usage API; show what its chats saw last.
     const s = sessions.get(activeId);
     if (s && s.account !== LOGIN) return { live: false, limits: accounts.find(s.account)?.usage || null };
-    try {
-      const u = await need().q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
-      return { live: true, limits: u.rate_limits, plan: u.subscription_type, session: u.session };
-    } catch {
-      return { live: false, limits: await config.cachedLimits() };
-    }
+    return login;
   },
   'usage:daily': () => dailyTokens(),
 
