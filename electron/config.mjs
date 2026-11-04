@@ -112,8 +112,8 @@ export async function saveDefaults({ model, effortLevel, defaultMode }) {
   await writeFile(USER_SETTINGS, JSON.stringify(s, null, 2) + '\n', 'utf8');
 }
 
-// Last known plan limits, used before a session answers.
+// The login's last known plan limits, as Claude Code saved them, and when it read them.
 export async function cachedLimits() {
-  const j = await readJson(path.join(HOME, '.claude.json'));
-  return j?.cachedUsageUtilization?.utilization || null;
+  const c = (await readJson(path.join(HOME, '.claude.json')))?.cachedUsageUtilization;
+  return c?.utilization ? { limits: c.utilization, at: c.fetchedAtMs || null } : null;
 }

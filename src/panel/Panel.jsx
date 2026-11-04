@@ -14,7 +14,7 @@ export default function Panel(props) {
     <aside className="panel" aria-label="Claude Code control panel">
       <SessionSection {...props} />
       <AccountsSection accounts={props.accounts} chatAccount={props.chatAccount} />
-      <UsageSection ready={ready} turns={turns} live={liveLimits} />
+      <UsageSection ready={ready} turns={turns} live={liveLimits} accounts={props.accounts} chatAccount={props.chatAccount} />
       <McpSection ready={ready} rev={rev} />
       <PluginsSection errors={init?.sysinit?.plugin_errors} onChanged={onPluginsChanged} />
       <SkillsSection commands={commands} onInsert={onInsert} />

@@ -389,6 +389,8 @@ button.icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; s
 .add-account .muted, .add-account .err { margin: 0; font-size: 12.5px; }
 .steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .add-account code { font: 12px var(--mono); }
+.account-usage { display: grid; gap: 10px; }
+.account-usage .sub-head { overflow-wrap: anywhere; }
 .account-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 13px; background: none; color: var(--ink-2); max-width: 240px; }
 .account-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-chip.blocked .pix { color: var(--red); }

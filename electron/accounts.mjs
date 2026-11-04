@@ -100,11 +100,24 @@ export class Accounts {
     this.save();
   }
 
+  // Usage from the usage API or Claude Code's cache: percents and reset times.
+  noteLimits(id, limits, at = Date.now()) {
+    const a = this.find(id);
+    if (!a || !limits) return;
+    a.usage = {};
+    for (const k of ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet']) {
+      if (limits[k]?.utilization != null) a.usage[k] = { utilization: limits[k].utilization, resets_at: limits[k].resets_at };
+    }
+    a.usageAt = at;
+    this.save();
+  }
+
   // Usage as last seen in a rate limit event from a chat on this account.
+  // An event can lack a window, so each window keeps its last value.
   note(id, info) {
     const a = this.find(id);
     if (!a || !info?.unifiedWindows) return;
-    a.usage = {};
+    a.usage = { ...(a.usage || {}) };
     for (const [k, w] of Object.entries(info.unifiedWindows)) a.usage[k] = { utilization: w.utilization * 100, resets_at: w.resetsAt };
     a.usageAt = Date.now();
     this.save();

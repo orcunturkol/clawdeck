@@ -4,6 +4,7 @@ import Section from './Section.jsx';
 import Switch from './Switch.jsx';
 import Meter from './Meter.jsx';
 import { ago, resetTime } from '../format.js';
+import { fiveHour } from './UsageSection.jsx';
 
 const TERMS = 'Automatic switching moves a chat to the next free Claude account when its account reaches its usage limit.\n\n'
   + 'Anthropic\'s Consumer Terms (section 3, effective 8 October 2025) say that you must not bypass "any of our systems or protective measures". '
@@ -13,13 +14,14 @@ const WINDOWS = [['five_hour', '5-hour window'], ['seven_day', 'Weekly, all mode
 
 function status(a) {
   if (a.blocked) return `Limit reached, free at ${resetTime(a.blockedUntil / 1000)}`;
-  const five = a.usage?.five_hour?.utilization;
+  const five = fiveHour(a).value;
   return five != null ? `${Math.round(five)}% of 5-hour window` : 'No usage seen yet';
 }
 
 function Account({ a, i, count, act, here }) {
   const [open, setOpen] = useState(false);
-  const marks = [a.main && 'Main', here && 'This chat'].filter(Boolean).join(', ');
+  const five = fiveHour(a).value;
+  const marks = [a.main && 'Main', here && 'This chat', a.blocked ? 'at its limit' : five != null && `${Math.round(five)}%`].filter(Boolean).join(', ');
   const remove = () => window.confirm(`Remove ${a.name} from Clawdeck? Its token is deleted here.`) && act('remove', { id: a.id });
   return (
     <li className={`item account ${here ? 'active' : ''} ${a.blocked ? 'blocked' : ''}`}>
