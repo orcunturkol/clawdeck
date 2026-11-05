@@ -52,7 +52,7 @@ async function byLastAnswer(list, cwdOf, since) {
   for (const r of list) r.lastAnswer = (await lastAnswer(r.sessionId, cwdOf(r))) || since(r) || 0;
   return list.sort((a, b) => b.lastAnswer - a.lastAnswer);
 }
-let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {} };
+let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {}, layout: {} };
 
 // A folder on the command line opens there: clawdeck ~/project
 function folderArg(argv, cwd = process.cwd()) {
@@ -306,6 +306,11 @@ const handlers = {
     state.webSearch = Boolean(on);
     saveState();
     for (const s of sessions.values()) s.webSearch = state.webSearch;
+  },
+  // Pane widths in px, from the drag handles: { rail, side }. Each drag saves one of them.
+  'app:setLayout': (l) => {
+    state.layout = { ...state.layout, ...l };
+    saveState();
   },
   'browser:bounds': (b) => pane.setBounds(b),
   'browser:hide': () => pane.hide(),
