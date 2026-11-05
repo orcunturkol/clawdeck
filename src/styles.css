@@ -98,7 +98,8 @@ select, input.search, input.other {
   height: 100vh;
 }
 .app.side-none { grid-template-columns: minmax(180px, var(--rail-w, 252px)) minmax(360px, 1fr); }
-.app.side-browser { grid-template-columns: minmax(180px, var(--rail-w, 252px)) minmax(380px, 1fr) minmax(480px, 1.15fr); }
+/* Until you drag it, the browser takes a share of the free width. */
+.app.side-browser { grid-template-columns: minmax(180px, var(--rail-w, 252px)) minmax(360px, 1fr) minmax(480px, var(--browser-w, 1.15fr)); }
 
 .topbar {
   grid-column: 1 / -1;

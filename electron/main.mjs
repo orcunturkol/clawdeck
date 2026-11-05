@@ -307,7 +307,7 @@ const handlers = {
     saveState();
     for (const s of sessions.values()) s.webSearch = state.webSearch;
   },
-  // Pane widths in px, from the drag handles: { rail, side }. Each drag saves one of them.
+  // Pane widths in px, from the drag handles: { rail, side, browser }. Each drag saves one of them.
   'app:setLayout': (l) => {
     state.layout = { ...state.layout, ...l };
     saveState();
