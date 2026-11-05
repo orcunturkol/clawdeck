@@ -46,6 +46,7 @@ export default function App() {
   const [webSearch, setWebSearchState] = useState(true);
   const [running, setRunning] = useState([]);
   const [update, setUpdate] = useState(null);
+  const [version, setVersion] = useState('');
   const [railTab, setRailTab] = useState('folder');
   const railTabRef = useRef(railTab);
   railTabRef.current = railTab;
@@ -132,6 +133,7 @@ export default function App() {
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
       setLayout(st.layout || {});
+      setVersion(st.version || '');
       call('accounts:list').then(setAccounts).catch(() => {});
       call('app:updateState').then(setUpdate).catch(() => {});
       setCwd(st.cwd);
@@ -349,7 +351,7 @@ export default function App() {
   );
 
   return (
-    <div className={`app side-${side}`} style={{ '--rail-w': layout.rail && `${layout.rail}px`, '--side-w': layout.side && `${layout.side}px` }}>
+    <div className={`app side-${side}`} style={{ '--rail-w': layout.rail && `${layout.rail}px`, '--side-w': layout.side && `${layout.side}px`, '--browser-w': layout.browser && `${layout.browser}px` }}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
         account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate}
@@ -358,11 +360,12 @@ export default function App() {
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
         onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
-        tab={railTab} setTab={setRailTab}
+        tab={railTab} setTab={setRailTab} version={version}
       />
       <main className="chat">
         <Resizer edge="left" prop="--rail-w" min={180} onDone={(w) => savePane('rail', w)} />
         {side === 'panel' && <Resizer edge="right" prop="--side-w" min={300} onDone={(w) => savePane('side', w)} />}
+        {side === 'browser' && <Resizer edge="right" prop="--browser-w" min={480} onDone={(w) => savePane('browser', w)} />}
         {viewing && (
           <div className="viewing-bar">
             <span>You are reading a session that runs in {viewing.where === 'terminal' ? 'a terminal tab' : 'another app'} in {baseName(viewing.cwd)}. Reply to it there.</span>

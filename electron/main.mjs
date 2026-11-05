@@ -239,7 +239,7 @@ const handlers = {
   'win:maximize': () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
   'win:close': () => win.close(),
 
-  'app:state': () => ({ ...state, home: HOME, claudePath }),
+  'app:state': () => ({ ...state, home: HOME, claudePath, version: app.getVersion() }),
   'app:updateState': () => updater.view(),
   'app:update': () => updater.install(),
   'dir:pick': async () => {
@@ -307,7 +307,7 @@ const handlers = {
     saveState();
     for (const s of sessions.values()) s.webSearch = state.webSearch;
   },
-  // Pane widths in px, from the drag handles: { rail, side }. Each drag saves one of them.
+  // Pane widths in px, from the drag handles: { rail, side, browser }. Each drag saves one of them.
   'app:setLayout': (l) => {
     state.layout = { ...state.layout, ...l };
     saveState();
