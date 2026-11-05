@@ -9,6 +9,7 @@ import Composer from './components/Composer.jsx';
 import Panel from './panel/Panel.jsx';
 import BrowserPane from './components/BrowserPane.jsx';
 import LoginBar from './components/LoginBar.jsx';
+import Resizer from './components/Resizer.jsx';
 
 // Claude Code answers this way when it has no login on this computer.
 const loggedOut = (m) => (m.type === 'assistant' && m.error === 'authentication_failed')
@@ -38,6 +39,7 @@ export default function App() {
   const [rev, setRev] = useState(0);
   const [draft, setDraft] = useState('');
   const [side, setSide] = useState('panel');
+  const [layout, setLayout] = useState({}); // pane widths in px; styles.css has the defaults
   const [browser, setBrowser] = useState({});
   const [maximized, setMaximized] = useState(false);
   const [error, setError] = useState('');
@@ -129,6 +131,7 @@ export default function App() {
       home.dir = st.home;
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
+      setLayout(st.layout || {});
       call('accounts:list').then(setAccounts).catch(() => {});
       call('app:updateState').then(setUpdate).catch(() => {});
       setCwd(st.cwd);
@@ -300,6 +303,11 @@ export default function App() {
     call('app:update').catch((e) => setError(e.message));
   };
 
+  const savePane = (key, w) => {
+    setLayout((l) => ({ ...l, [key]: w }));
+    call('app:setLayout', { [key]: w }).catch(() => {});
+  };
+
   const setWebSearch = (on) => {
     setWebSearchState(on);
     call('session:setWebSearch', { on }).catch((e) => setError(e.message));
@@ -341,7 +349,7 @@ export default function App() {
   );
 
   return (
-    <div className={`app side-${side}`}>
+    <div className={`app side-${side}`} style={{ '--rail-w': layout.rail && `${layout.rail}px`, '--side-w': layout.side && `${layout.side}px` }}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
         account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate}
@@ -353,6 +361,8 @@ export default function App() {
         tab={railTab} setTab={setRailTab}
       />
       <main className="chat">
+        <Resizer edge="left" prop="--rail-w" min={180} onDone={(w) => savePane('rail', w)} />
+        {side === 'panel' && <Resizer edge="right" prop="--side-w" min={300} onDone={(w) => savePane('side', w)} />}
         {viewing && (
           <div className="viewing-bar">
             <span>You are reading a session that runs in {viewing.where === 'terminal' ? 'a terminal tab' : 'another app'} in {baseName(viewing.cwd)}. Reply to it there.</span>
