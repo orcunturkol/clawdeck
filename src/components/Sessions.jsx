@@ -123,7 +123,7 @@ function Running({ running, activeId, onView, onStop, onClose, onRename }) {
   );
 }
 
-export default function Sessions({ cwd, recent, sessions, activeId, running, onNew, onOpen, onView, onStopShell, onCloseChat, onRename, onPickDir, onDir, tab, setTab }) {
+export default function Sessions({ cwd, recent, sessions, activeId, running, onNew, onOpen, onView, onStopShell, onCloseChat, onRename, onPickDir, onDir, tab, setTab, version }) {
   const live = new Map((running || []).map((r) => [r.sessionId, r]));
   const [editing, setEditing] = useState(null);
   const rows = useSteady(sessions || [], editing);
@@ -176,6 +176,7 @@ export default function Sessions({ cwd, recent, sessions, activeId, running, onN
           })}
         </nav>
       </>}
+      {version && <div className="rail-foot">Clawdeck {version}</div>}
     </aside>
   );
 }

@@ -239,7 +239,7 @@ const handlers = {
   'win:maximize': () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
   'win:close': () => win.close(),
 
-  'app:state': () => ({ ...state, home: HOME, claudePath }),
+  'app:state': () => ({ ...state, home: HOME, claudePath, version: app.getVersion() }),
   'app:updateState': () => updater.view(),
   'app:update': () => updater.install(),
   'dir:pick': async () => {

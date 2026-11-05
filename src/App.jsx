@@ -46,6 +46,7 @@ export default function App() {
   const [webSearch, setWebSearchState] = useState(true);
   const [running, setRunning] = useState([]);
   const [update, setUpdate] = useState(null);
+  const [version, setVersion] = useState('');
   const [railTab, setRailTab] = useState('folder');
   const railTabRef = useRef(railTab);
   railTabRef.current = railTab;
@@ -132,6 +133,7 @@ export default function App() {
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
       setLayout(st.layout || {});
+      setVersion(st.version || '');
       call('accounts:list').then(setAccounts).catch(() => {});
       call('app:updateState').then(setUpdate).catch(() => {});
       setCwd(st.cwd);
@@ -358,7 +360,7 @@ export default function App() {
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
         onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
-        tab={railTab} setTab={setRailTab}
+        tab={railTab} setTab={setRailTab} version={version}
       />
       <main className="chat">
         <Resizer edge="left" prop="--rail-w" min={180} onDone={(w) => savePane('rail', w)} />
