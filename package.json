@@ -1,7 +1,7 @@
 {
   "name": "clawdeck",
   "productName": "Clawdeck",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Desktop app for Claude Code on Linux and Windows",
   "private": true,
   "type": "module",
