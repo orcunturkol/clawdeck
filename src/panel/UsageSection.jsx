@@ -56,11 +56,11 @@ export default function UsageSection({ ready, turns, live, accounts, chatAccount
   return (
     <Section title="Usage" icon="gauge" summary={five != null ? `${Math.round(five)}% of 5-hour window` : ''} defaultOpen>
       {accounts?.list.length > 1 && chatAccount && <h4 className="sub-head">{chatAccount.email || chatAccount.name} (this chat)</h4>}
-      {shown.length === 0 && <p className="muted">Plan limits show after Claude Code starts.</p>}
+      {shown.length === 0 && <p className="muted">{chatAccount?.kind === 'local' ? 'A local model has no plan limits.' : 'Plan limits show after Claude Code starts.'}</p>}
       {shown.map(([k, label]) => (
         <Meter key={k} label={label} value={merged[k].utilization} sub={merged[k].resets_at ? `Resets ${resetTime(merged[k].resets_at)}` : ''} />
       ))}
-      {accounts?.list.length > 1 && accounts.list.filter((a) => a.id !== chatAccount?.id).map((a) => (
+      {accounts?.list.length > 1 && accounts.list.filter((a) => a.id !== chatAccount?.id && a.kind !== 'local').map((a) => (
         <div key={a.id} className="account-usage">
           <h4 className="sub-head">{a.email || a.name}</h4>
           {[['five_hour', '5-hour window'], ['seven_day', 'Weekly']].map(([k, label]) => {

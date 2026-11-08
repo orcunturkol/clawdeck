@@ -11,7 +11,7 @@ import { dailyTokens, lastAnswer } from './usage.mjs';
 import { BrowserPane } from './browser.mjs';
 import { browserServer } from './browserTools.mjs';
 import { listRunning, stopShell } from './running.mjs';
-import { Accounts, LOGIN } from './accounts.mjs';
+import { Accounts, LOGIN, LOCAL_URL, LOCAL_CONTEXT } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
 import { Updater } from './update.mjs';
 
@@ -153,7 +153,7 @@ function watchLimits(s, m) {
 // The process options for a chat whose own account is own.
 function accountOptions(own, current = null) {
   const account = accounts.pick(own, current);
-  return { own, account, env: accounts.env(account) };
+  return { own, account, env: accounts.env(account), runModel: accounts.isLocal(account) ? accounts.find(account).model : '' };
 }
 
 // A chat moves to another account: its process starts again on the same history.
@@ -283,6 +283,7 @@ const handlers = {
   },
   'session:setModel': async ({ sessionId, model }) => {
     const s = need(sessionId);
+    if (s.runModel) throw new Error('This chat runs on a local model. Pick a Claude account to change the model.');
     await s.q.setModel(model || undefined);
     s.set({ model: model || '' });
   },
@@ -389,6 +390,8 @@ const handlers = {
   'accounts:move': ({ id, delta }) => accounts.move(id, delta),
   'accounts:setAuto': ({ on }) => accounts.setAuto(on),
   'accounts:setGoBack': ({ on }) => accounts.setGoBack(on),
+  'accounts:localModels': ({ url }) => localModels(localUrl(url)),
+  'accounts:addLocal': ({ url, model, context }) => addLocal(localUrl(url), String(model || '').trim(), Number(context) || LOCAL_CONTEXT),
 
   'hooks:list': async ({ cwd }) => config.listHooks(cwd, await config.listPlugins(claudePath).catch(() => [])),
   'memory:list': ({ cwd }) => config.memoryFiles(cwd),
@@ -488,6 +491,34 @@ async function addAccount(name, token, { check = true } = {}) {
   const id = accounts.add(name, token);
   if (limit) accounts.note(id, limit);
   if (error === 'rate_limit') accounts.limitReached(id, limit?.status === 'rejected' ? limit.resetsAt : null);
+  return accounts.view();
+}
+
+// A local model server, such as Ollama. Its Anthropic-compatible API is what Claude Code talks to.
+function localUrl(url) {
+  const u = String(url || LOCAL_URL).trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/[^/\s]+$/.test(u)) throw new Error('Give the server address only, for example http://localhost:11434.');
+  return u;
+}
+
+async function localModels(url) {
+  let r;
+  try {
+    r = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5000) });
+  } catch {
+    throw new Error(`No model server answers at ${url}. Start Ollama, then try again.`);
+  }
+  if (!r.ok) throw new Error(`The server at ${url} answered ${r.status}. Is it Ollama?`);
+  const { models = [] } = await r.json();
+  return models.map((m) => ({ name: m.name, size: m.size, params: m.details?.parameter_size || '', quant: m.details?.quantization_level || '' }));
+}
+
+async function addLocal(url, model, context) {
+  if (!model) throw new Error('Pick a model.');
+  if (!Number.isInteger(context) || context < 4096 || context > 1048576) throw new Error('Give a context size from 4096 to 1048576 tokens.');
+  const names = (await localModels(url)).map((m) => m.name);
+  if (!names.includes(model)) throw new Error(`${model} is not on the server. Pull it first with \`ollama pull\`.`);
+  accounts.addLocal({ url, model, context });
   return accounts.view();
 }
 
