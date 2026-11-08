@@ -11,6 +11,10 @@ MCP servers, and shows them in one window. Anthropic does not make Clawdeck.
   the account of each chat, and see the usage of each account. As an option, a chat can move to a
   free account when its account reaches its limit. Anthropic can treat this as a way around its
   usage limits, so read the warning in the app first.
+- **Local models.** Add a model from an [Ollama](https://ollama.com) server as an account, then
+  pick it for a chat. The chat runs in Claude Code on that model, with no token, no usage limits
+  and no traffic to Anthropic. Set the server's `OLLAMA_CONTEXT_LENGTH` to 32768 or more. Local
+  models make more mistakes with tools than Claude, so automatic switching never picks one.
 - **Live usage.** 5-hour and weekly limits, and tokens per day.
 - **Control panel.** Model, effort, Ultracode and permission mode for each chat. MCP servers and
   plugins on or off. Skills, commands, agents, hooks, and an editor for CLAUDE.md and memory.

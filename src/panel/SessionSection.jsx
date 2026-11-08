@@ -28,8 +28,10 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
   const account = chatAccount && chatAccount.id !== 'login' ? { email: chatAccount.name } : init?.account;
   const choices = accounts?.list || [];
   const own = choices.find((a) => a.id === settings.account);
+  // On a local account the account sets the model; effort and ultracode are Claude features.
+  const local = chatAccount?.kind === 'local' ? chatAccount : null;
   return (
-    <Section title="Session" icon="sliders" summary={current?.displayName || ''} defaultOpen>
+    <Section title="Session" icon="sliders" summary={local ? local.model : current?.displayName || ''} defaultOpen>
       <dl className="facts">
         <dt>Folder</dt><dd title={cwd}>{folderPath(cwd)}</dd>
         {choices.length < 2 && account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}
@@ -51,20 +53,22 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
       )}
       <label className="field">
         <span>Model</span>
-        <select value={settings.model || 'default'} disabled={!init} onChange={(e) => setModel(e.target.value)}>
-          {models.map((m) => <option key={m.value} value={m.value}>{m.displayName}</option>)}
-        </select>
+        {local
+          ? <select value="local" disabled><option value="local">{local.model}</option></select>
+          : <select value={settings.model || 'default'} disabled={!init} onChange={(e) => setModel(e.target.value)}>
+            {models.map((m) => <option key={m.value} value={m.value}>{m.displayName}</option>)}
+          </select>}
       </label>
       <label className="field">
         <span>Effort</span>
-        <select value={settings.effort} disabled={!init || !efforts.length} onChange={(e) => setEffort(e.target.value)}>
+        <select value={settings.effort} disabled={!init || !efforts.length || Boolean(local)} onChange={(e) => setEffort(e.target.value)}>
           <option value="">Model default</option>
           {efforts.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
       </label>
       <div className="switch-line" title="Claude plans each task as a workflow and runs it with many agents. Uses far more tokens. This chat only.">
         <span>Ultracode</span>
-        <Switch on={Boolean(settings.ultracode)} onChange={setUltracode} label="Turn ultracode on or off" busy={!init} />
+        <Switch on={Boolean(settings.ultracode)} onChange={setUltracode} label="Turn ultracode on or off" busy={!init || Boolean(local)} />
       </div>
       <label className="field">
         <span>Permissions</span>
