@@ -9,9 +9,24 @@ export default function ClaudeCodeSection() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState('');
 
   const load = () => call('claudecode:info').then(setInfo).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
+
+  // Asks the npm registry for the newest version again and says what it found.
+  const check = async () => {
+    setChecking(true); setChecked(''); setError('');
+    try {
+      const i = await call('claudecode:info');
+      setInfo(i);
+      setChecked(!i.latest ? 'Could not reach the update server. Check your connection.'
+        : i.upToDate === false ? `Version ${i.latest} is available.`
+        : i.upToDate ? `You have the newest version (${i.version}).` : 'Could not compare the versions.');
+    } catch (e) { setError(e.message); }
+    setChecking(false);
+  };
 
   const update = async () => {
     setBusy(true); setResult(null); setError('');
@@ -33,6 +48,8 @@ export default function ClaudeCodeSection() {
           {info.error && <p className="err">{info.error}</p>}
           {info.upToDate === true && !busy && <p className="muted">Claude Code is up to date. No update is needed.</p>}
           {info.upToDate === false && !busy && <p className="muted">A new version is available.</p>}
+          <button className="ghost" onClick={check} disabled={busy || checking} data-testid="claudecode-check">{checking ? 'Checking' : 'Check for updates'}</button>
+          {checked && <p className="muted" data-testid="claudecode-checked">{checked}</p>}
           <button onClick={update} disabled={busy || info.upToDate === true} data-testid="claudecode-update">{busy ? 'Updating, please wait' : 'Update'}</button>
           {busy && <div className="cc-progress" role="progressbar" aria-label="Updating Claude Code"><span /></div>}
           {result && (

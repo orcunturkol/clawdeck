@@ -90,6 +90,8 @@ test('claude code section shows the installed version', async () => {
     if (await page.getByTestId('claudecode-version').count()) {
       await page.waitForFunction(() => /\d+\.\d+\.\d+/.test(document.querySelector('[data-testid="claudecode-version"]')?.textContent || ''), null, { timeout: 30000 });
       assert.ok(await page.getByTestId('claudecode-update').count());
+      await page.getByTestId('claudecode-check').click();
+      await page.getByTestId('claudecode-checked').waitFor({ timeout: 30000 });
     }
   } finally {
     await app.close();
