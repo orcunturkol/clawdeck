@@ -487,3 +487,15 @@ button.item-main:hover { background: var(--raised); }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
+
+/* Copy buttons and tool titles */
+.copy-wrap { position: relative; }
+.copy-btn {
+  position: absolute; top: 6px; right: 6px; padding: 2px 8px; font: 11px var(--mono);
+  background: var(--code-bg); color: var(--muted, inherit); border: 1px solid var(--line); border-radius: 4px;
+  cursor: pointer; opacity: 0; transition: opacity .12s;
+}
+.copy-wrap:hover .copy-btn, .copy-btn:focus-visible, .copy-btn.done { opacity: 1; }
+.copy-btn.done { color: var(--green, inherit); }
+.tool-title { font-family: inherit; }
+.shell-title { font-family: inherit; }
