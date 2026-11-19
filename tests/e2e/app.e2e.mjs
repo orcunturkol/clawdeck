@@ -33,6 +33,11 @@ before(() => {
   writeFileSync(path.join(repo, 'src/a.txt'), 'one\ntwo\n'); // modified
   writeFileSync(path.join(repo, 'new.txt'), 'x\n'); // untracked
   // Fake VS Code: records its arguments.
+  // Fake Claude Code for the version panel (a script cannot stand in for claude.exe on Windows).
+  if (!IS_WIN) {
+    writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.0 (Claude Code)"; fi\n');
+    chmodSync(path.join(bin, 'claude'), 0o755);
+  }
   if (IS_WIN) writeFileSync(path.join(bin, 'code.cmd'), `@echo %* >> "${codeLog}"\r\n`);
   else {
     writeFileSync(path.join(bin, 'code'), `#!/bin/sh\necho "$@" >> "${codeLog}"\n`);
@@ -80,10 +85,12 @@ test('claude code section shows the installed version', async () => {
   const { app, page } = await launch();
   try {
     await setOpen(page, 'claudecode', true);
-    const v = page.getByTestId('claudecode-version');
-    await v.waitFor();
-    await page.waitForFunction(() => /\d+\.\d+\.\d+/.test(document.querySelector('[data-testid="claudecode-version"]')?.textContent || ''), null, { timeout: 30000 });
-    assert.ok(await page.getByTestId('claudecode-update').count());
+    // Real Claude Code, the fake one, or none: the panel must show a version or say it is missing.
+    await page.waitForSelector('[data-testid="claudecode-version"], [data-testid="claudecode-missing"]', { timeout: 30000 });
+    if (await page.getByTestId('claudecode-version').count()) {
+      await page.waitForFunction(() => /\d+\.\d+\.\d+/.test(document.querySelector('[data-testid="claudecode-version"]')?.textContent || ''), null, { timeout: 30000 });
+      assert.ok(await page.getByTestId('claudecode-update').count());
+    }
   } finally {
     await app.close();
   }

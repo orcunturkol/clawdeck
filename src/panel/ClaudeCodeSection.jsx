@@ -24,7 +24,7 @@ export default function ClaudeCodeSection() {
     <Section id="claudecode" title="Claude Code" icon="cartridge" summary={info?.version || ''}>
       {!info && !error && <p className="muted">Reading the installed version</p>}
       {error && <p className="err">{error}</p>}
-      {info && !info.found && <p className="muted">Claude Code is not installed.</p>}
+      {info && !info.found && <p className="muted" data-testid="claudecode-missing">Claude Code is not installed.</p>}
       {info?.found && (
         <div className="cc">
           <div className="cc-row"><span className="muted">Installed</span><span className="mono" data-testid="claudecode-version">{info.version || 'unknown'}</span></div>

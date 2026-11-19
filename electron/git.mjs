@@ -150,11 +150,14 @@ const SKIP = new Set([path.parse(process.cwd()).root, os.homedir(), os.tmpdir()]
 
 async function scan(dirs) {
   const todo = dirs.filter((d) => !SKIP.has(path.resolve(d)));
-  const out = [];
+  const out = new Array(todo.length).fill(null);
   // Three repos at a time: a big repo must not start many git processes together.
   let next = 0;
   await Promise.all([0, 1, 2].map(async () => {
-    while (next < todo.length) out.push(await projectStatus(todo[next++]).catch(() => null));
+    while (next < todo.length) {
+      const i = next++;
+      out[i] = await projectStatus(todo[i]).catch(() => null);
+    }
   }));
   const seen = new Set();
   return out.filter((p) => p && !seen.has(p.top) && seen.add(p.top));

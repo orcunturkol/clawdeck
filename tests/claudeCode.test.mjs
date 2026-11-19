@@ -25,7 +25,8 @@ test('installType detects npm and native paths', () => {
   assert.equal(installType('/opt/foo/claude'), 'unknown');
 });
 
-test('info and update work against a fake claude on PATH', async () => {
+// The fake is a shell script, so it runs on Linux and macOS only. Windows needs a real claude.exe.
+test('info and update work against a fake claude on PATH', { skip: process.platform === 'win32' }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'fakeclaude-'));
   const fake = path.join(dir, 'claude');
   writeFileSync(fake, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "1.0.0 (Claude Code)"; exit 0; fi\nif [ "$1" = "update" ]; then echo "boom" >&2; exit 3; fi\n');
