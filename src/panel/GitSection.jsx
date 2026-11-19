@@ -86,7 +86,8 @@ function Project({ p, onCode }) {
   );
 }
 
-export default function GitSection() {
+// The body mounts only while the section is open, so a closed section never polls git.
+function GitBody() {
   const [list, setList] = useState(null);
   const [err, setErr] = useState('');
   const refresh = useCallback(() => call('git:projects').then((r) => { setList(r); setErr(''); }).catch((e) => setErr(e.message)), []);
@@ -98,17 +99,23 @@ export default function GitSection() {
   }, [refresh]);
 
   const code = (dir, file) => call('editor:open', { dir, file }).catch((e) => setErr(e.message));
-  const total = list ? list.reduce((n, p) => n + p.count, 0) : 0;
+  return (
+    <>
+      <div className="git-bar">
+        <button className="ghost" onClick={refresh}>Refresh</button>
+        {list && <span className="muted">{list.reduce((n, p) => n + p.count, 0)} changes in {list.length} projects</span>}
+      </div>
+      {err && <div className="error">{err}</div>}
+      {list && list.length === 0 && <div className="muted">No git projects found.</div>}
+      {list && list.map((p) => <Project key={p.top} p={p} onCode={code} />)}
+    </>
+  );
+}
+
+export default function GitSection() {
   return (
     <div data-testid="git-section">
-      <Section id="git" title="Git changes" icon="folder" summary={list ? `${total} in ${list.length}` : ''}>
-        <div className="git-bar">
-          <button className="ghost" onClick={refresh}>Refresh</button>
-        </div>
-        {err && <div className="error">{err}</div>}
-        {list && list.length === 0 && <div className="muted">No git projects found.</div>}
-        {list && list.map((p) => <Project key={p.top} p={p} onCode={code} />)}
-      </Section>
+      <Section id="git" title="Git changes" icon="folder"><GitBody /></Section>
     </div>
   );
 }

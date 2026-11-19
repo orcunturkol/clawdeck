@@ -1,6 +1,7 @@
 // Read-only git views: status of each known project as a folder tree, and small diffs.
 // Only `status`, `diff` and `rev-parse` run here. No command changes a repo.
 import { execFile } from 'node:child_process';
+import os from 'node:os';
 import { promisify } from 'node:util';
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -123,7 +124,7 @@ export async function repoTop(dir) {
 export async function projectStatus(dir) {
   const top = await repoTop(dir);
   if (!top) return null;
-  const st = parseStatus(await git(top, ['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all']));
+  const st = parseStatus(await git(top, ['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=normal']));
   const stat = await git(top, ['diff', '--numstat', '-z', '--no-ext-diff', 'HEAD'])
     .catch(() => git(top, ['diff', '--numstat', '-z', '--no-ext-diff']).catch(() => ''));
   const nums = parseNumstat(stat);
@@ -137,10 +138,26 @@ export async function projectStatus(dir) {
 }
 
 // Status of every folder. Folders that are not repos, and repeats of the same repo, are left out.
-export async function projects(dirs) {
-  const all = await Promise.all(dirs.map((d) => projectStatus(d).catch(() => null)));
+let inFlight = null;
+export function projects(dirs) {
+  // A slow scan must not stack up with the next poll: share the running one.
+  if (inFlight) return inFlight;
+  inFlight = scan(dirs).finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+const SKIP = new Set([path.parse(process.cwd()).root, os.homedir(), os.tmpdir()].map((d) => path.resolve(d)));
+
+async function scan(dirs) {
+  const todo = dirs.filter((d) => !SKIP.has(path.resolve(d)));
+  const out = [];
+  // Three repos at a time: a big repo must not start many git processes together.
+  let next = 0;
+  await Promise.all([0, 1, 2].map(async () => {
+    while (next < todo.length) out.push(await projectStatus(todo[next++]).catch(() => null));
+  }));
   const seen = new Set();
-  return all.filter((p) => p && !seen.has(p.top) && seen.add(p.top));
+  return out.filter((p) => p && !seen.has(p.top) && seen.add(p.top));
 }
 
 // Turn a file given by the page into an absolute path that stays inside the repo (links included).

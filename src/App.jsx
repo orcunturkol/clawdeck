@@ -199,7 +199,7 @@ export default function App() {
 
   // Every Claude Code process on this PC; cheap to read, so poll it.
   useEffect(() => {
-    const load = () => call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
+    const load = () => document.visibilityState === 'hidden' || call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
     load();
     const id = setInterval(load, 2000);
     return () => clearInterval(id);
