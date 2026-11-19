@@ -31,7 +31,7 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
   // On a local account the account sets the model; effort and ultracode are Claude features.
   const local = chatAccount?.kind === 'local' ? chatAccount : null;
   return (
-    <Section title="Session" icon="sliders" summary={local ? local.model : current?.displayName || ''} defaultOpen>
+    <Section id="session" title="Session" icon="sliders" summary={local ? local.model : current?.displayName || ''} defaultOpen>
       <dl className="facts">
         <dt>Folder</dt><dd title={cwd}>{folderPath(cwd)}</dd>
         {choices.length < 2 && account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}

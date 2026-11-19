@@ -175,7 +175,7 @@ export default function AccountsSection({ accounts, chatAccount }) {
     setSigning(false);
   };
   return (
-    <Section title="Accounts" icon="person" summary={`${accounts.list.length} account${accounts.list.length === 1 ? '' : 's'}`} defaultOpen>
+    <Section id="accounts" title="Accounts" icon="person" summary={`${accounts.list.length} account${accounts.list.length === 1 ? '' : 's'}`} defaultOpen>
       <ul className="items">
         {accounts.list.map((a, i) => <Account key={a.id} a={a} i={i} count={accounts.list.length} act={act} here={a.id === chatAccount?.id} />)}
       </ul>
