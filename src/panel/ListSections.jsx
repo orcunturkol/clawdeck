@@ -40,7 +40,7 @@ function CommandList({ commands, onInsert, empty }) {
 export function SkillsSection({ commands, onInsert }) {
   const skills = commands.filter((c) => !c.builtin);
   return (
-    <Section title="Skills" icon="spark" summary={skills.length ? String(skills.length) : ''}>
+    <Section id="skills" title="Skills" icon="spark" summary={skills.length ? String(skills.length) : ''}>
       <CommandList commands={skills} onInsert={onInsert} empty="No skills match." />
     </Section>
   );
@@ -49,7 +49,7 @@ export function SkillsSection({ commands, onInsert }) {
 export function CommandsSection({ commands, onInsert }) {
   const builtin = commands.filter((c) => c.builtin);
   return (
-    <Section title="Commands" icon="slash" summary={builtin.length ? String(builtin.length) : ''}>
+    <Section id="commands" title="Commands" icon="slash" summary={builtin.length ? String(builtin.length) : ''}>
       <CommandList commands={builtin} onInsert={onInsert} empty="No commands match." />
     </Section>
   );
@@ -57,7 +57,7 @@ export function CommandsSection({ commands, onInsert }) {
 
 export function AgentsSection({ agents = [] }) {
   return (
-    <Section title="Agents" icon="robot" summary={agents.length ? String(agents.length) : ''}>
+    <Section id="agents" title="Agents" icon="robot" summary={agents.length ? String(agents.length) : ''}>
       <ul className="items">
         {agents.map((a) => (
           <li key={a.name} className="item">
@@ -77,7 +77,7 @@ export function HooksSection({ cwd, rev }) {
   const [hooks, setHooks] = useState(null);
   useEffect(() => { call('hooks:list', { cwd }).then(setHooks).catch(() => setHooks([])); }, [cwd, rev]);
   return (
-    <Section title="Hooks" icon="hook" summary={hooks ? String(hooks.length) : ''}>
+    <Section id="hooks" title="Hooks" icon="hook" summary={hooks ? String(hooks.length) : ''}>
       {hooks?.length === 0 && <p className="muted">No hooks in user, project or plugin settings.</p>}
       <ul className="items">
         {hooks?.map((h, i) => (

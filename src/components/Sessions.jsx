@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { ago, baseName, folderPath, since, tidyPaths } from '../format.js';
+import { descriptionFor } from '../titles.js';
 import Icon from './Icon.jsx';
 
 const STATUS = {
@@ -59,12 +60,15 @@ function RenameButton({ onClick }) {
   );
 }
 
-function Shell({ sh, onStop }) {
+function Shell({ sh, onStop, tools }) {
+  const title = descriptionFor(sh.command, tools);
   return (
     <li className="shell">
       <span className="shell-line">
         <Icon name="shell" />
-        <code className="shell-cmd" title={sh.command}>{tidyPaths(sh.command.split('\n')[0])}</code>
+        {title
+          ? <span className="shell-cmd shell-title" data-testid="running-title" title={tidyPaths(sh.command)}>{title}</span>
+          : <code className="shell-cmd" data-testid="running-title" title={sh.command}>{tidyPaths(sh.command.split('\n')[0])}</code>}
       </span>
       <span className="shell-meta">
         {sh.ports.length > 0 && <span className="shell-ports">{sh.ports.map((p) => `:${p}`).join(' ')}</span>}
@@ -75,7 +79,7 @@ function Shell({ sh, onStop }) {
   );
 }
 
-function Running({ running, activeId, onView, onStop, onClose, onRename }) {
+function Running({ running, activeId, onView, onStop, onClose, onRename, toolsOf }) {
   const [editing, setEditing] = useState(null);
   const rows = useSteady(running, editing);
   return (
@@ -112,7 +116,7 @@ function Running({ running, activeId, onView, onStop, onClose, onRename }) {
               </div>
               {r.shells.length > 0 && (
                 <ul className="run-shells">
-                  {r.shells.map((sh) => <Shell key={sh.pid} sh={sh} onStop={onStop} />)}
+                  {r.shells.map((sh) => <Shell key={sh.pid} sh={sh} onStop={onStop} tools={toolsOf(r.sessionId)} />)}
                 </ul>
               )}
             </li>
@@ -123,7 +127,7 @@ function Running({ running, activeId, onView, onStop, onClose, onRename }) {
   );
 }
 
-export default function Sessions({ cwd, recent, sessions, activeId, running, onNew, onOpen, onView, onStopShell, onCloseChat, onRename, onPickDir, onDir, tab, setTab, version }) {
+export default function Sessions({ cwd, recent, sessions, activeId, running, onNew, onOpen, onView, onStopShell, onCloseChat, onRename, onPickDir, onDir, tab, setTab, version, toolsOf }) {
   const live = new Map((running || []).map((r) => [r.sessionId, r]));
   const [editing, setEditing] = useState(null);
   const rows = useSteady(sessions || [], editing);
@@ -134,7 +138,7 @@ export default function Sessions({ cwd, recent, sessions, activeId, running, onN
         <button {...tabProps('folder')}>This folder</button>
         <button {...tabProps('running')}>Running <span className="tab-count">{running?.length || 0}</span></button>
       </div>
-      {tab === 'running' ? <Running running={running || []} activeId={activeId} onView={onView} onStop={onStopShell} onClose={onCloseChat} onRename={onRename} /> : <>
+      {tab === 'running' ? <Running running={running || []} activeId={activeId} onView={onView} onStop={onStopShell} onClose={onCloseChat} onRename={onRename} toolsOf={toolsOf} /> : <>
         <div className="folder">
           <button className="folder-name" onClick={onPickDir} title={`${folderPath(cwd)}\nClick to choose another folder`}>
             <span className="folder-base"><Icon name="folder" />{baseName(cwd)}</span>

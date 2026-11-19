@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { shortPath, tidyPaths } from '../format.js';
 import Icon from './Icon.jsx';
+import CopyButton from './CopyButton.jsx';
 
 const TOOL_ICON = {
   Bash: 'shell', PowerShell: 'shell', Read: 'eye', Edit: 'pencil', MultiEdit: 'pencil', NotebookEdit: 'pencil', Write: 'page-plus',
@@ -131,7 +132,9 @@ export function Diff({ before = '', after = '' }) {
 export function ToolInput({ name, input }) {
   if (name === 'Edit') return <Diff before={input.old_string} after={input.new_string} />;
   if (name === 'Write') return <pre className="out">{(input.content || '').slice(0, 6000)}</pre>;
-  if (name === 'Bash' || name === 'PowerShell') return <pre className="out cmd">{input.command}</pre>;
+  if (name === 'Bash' || name === 'PowerShell') {
+    return <div className="copy-wrap"><pre className="out cmd">{input.command}</pre><CopyButton text={input.command || ''} label="Copy command" /></div>;
+  }
   if (name === 'WebSearch') return <p className="tool-note">Search the web for “{input.query}”</p>;
   if (name === 'WebFetch') return <p className="tool-note">Open {input.url}</p>;
   if (name === 'TodoWrite') {
@@ -157,6 +160,7 @@ function GenericTool({ tool, tools }) {
   const label = toolLabel(tool.name);
   const out = resultText(tool.result);
   const sub = tool.children.length;
+  const title = (tool.name === 'Bash' || tool.name === 'PowerShell') && tool.input.description;
   return (
     <div className={`tool ${tool.status}`}>
       <button className="tool-row" onClick={() => setOpen(!open)} aria-expanded={open}>
@@ -164,7 +168,10 @@ function GenericTool({ tool, tools }) {
         <Icon name={toolIcon(tool.name)} />
         <span className="tool-name">{label.name}</span>
         {label.server && <span className="tool-server">{label.server}</span>}
-        <span className="tool-sum">{toolSummary(tool.name, tool.input)}</span>
+        {title
+          ? <span className="tool-sum tool-title" data-testid="tool-title" title={tidyPaths(tool.input.command)}>{title}</span>
+          : <span className="tool-sum">{toolSummary(tool.name, tool.input)}</span>}
+        {tool.input.run_in_background && <span className="tool-sub">background</span>}
         {sub > 0 && <span className="tool-sub">{sub} steps</span>}
       </button>
       {open && (
@@ -181,7 +188,10 @@ function GenericTool({ tool, tools }) {
           )}
           {out && (
             <>
-              <pre className={`out result ${tool.status === 'error' ? 'err' : ''}`}>{full ? out : out.slice(0, LIMIT)}</pre>
+              <div className="copy-wrap">
+                <pre className={`out result ${tool.status === 'error' ? 'err' : ''}`}>{full ? out : out.slice(0, LIMIT)}</pre>
+                <CopyButton text={out} label="Copy code" />
+              </div>
               {out.length > LIMIT && !full && <button className="link" onClick={() => setFull(true)}>Show all {out.length.toLocaleString()} characters</button>}
             </>
           )}

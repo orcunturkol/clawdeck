@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
+import { insertToken, buildSend } from '../composerTokens.js';
 
 export const MODES = [
   { value: 'default', label: 'Ask before edits' },
@@ -19,11 +20,10 @@ function readImage(file) {
   });
 }
 
-// A path with spaces (common on Windows) needs quotes, or Claude Code reads only its first word.
-const mention = (p) => (/\s/.test(p) ? `@"${p}"` : `@${p}`);
-
 export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, draft, setDraft, lockedText, suggestion, remote, setRemote }) {
-  const [images, setImages] = useState([]);
+  // token text -> attachment. Numbers stay stable per draft and reset on send.
+  const [attachments, setAttachments] = useState({});
+  const counts = useRef({ image: 0, file: 0 });
   const [pick, setPick] = useState(0);
   const ref = useRef(null);
 
@@ -42,10 +42,12 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
   useEffect(() => { if (!disabled) ref.current.focus(); }, [disabled]);
 
   const send = () => {
-    if (!draft.trim() && !images.length) return;
-    onSend(draft.trim(), images.map(({ mediaType, data }) => ({ mediaType, data })));
+    if (!draft.trim()) return;
+    const out = buildSend(draft, attachments);
+    onSend(out.text, out.images);
     setDraft('');
-    setImages([]);
+    setAttachments({});
+    counts.current = { image: 0, file: 0 };
   };
 
   const choose = (c) => { setDraft(`/${c.name} `); ref.current.focus(); };
@@ -73,12 +75,31 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
     if (e.key === 'Escape' && running) onStop();
   };
 
+  // Add attachments as tokens at the caret. The caret is read before any await.
+  const addTokens = (items) => {
+    const el = ref.current;
+    let text = el.value;
+    let caret = el.selectionStart;
+    const added = {};
+    for (const [kind, item] of items) {
+      const token = `[${kind}${++counts.current[kind]}]`;
+      added[token] = { kind, ...item };
+      ({ text, caret } = insertToken(text, caret, token));
+    }
+    setAttachments((prev) => ({ ...prev, ...added }));
+    setDraft(text);
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(caret, caret); });
+  };
+
   const onPaste = async (e) => {
     const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'));
     if (!files.length) return;
     e.preventDefault();
+    const el = ref.current;
+    const caret = el.selectionStart;
     const read = await Promise.all(files.map(readImage));
-    setImages((prev) => [...prev, ...read]);
+    el.setSelectionRange(caret, caret);
+    addTokens(read.map(({ mediaType, data }) => ['image', { mediaType, data }]));
   };
 
   const onDrop = async (e) => {
@@ -87,8 +108,9 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
     e.preventDefault();
     const imgs = files.filter((f) => f.type.startsWith('image/'));
     const others = files.filter((f) => !f.type.startsWith('image/'));
-    if (imgs.length) setImages([...images, ...(await Promise.all(imgs.map(readImage)))]);
-    if (others.length) setDraft(`${draft}${draft && !draft.endsWith(' ') ? ' ' : ''}${others.map((f) => mention(window.deck.pathForFile(f))).join(' ')} `);
+    const read = (await Promise.all(imgs.map(readImage))).map(({ mediaType, data }) => ({ mediaType, data }));
+    // One batch, so the second call does not read a stale textarea value.
+    addTokens([...others.map((f) => ['file', { path: window.deck.pathForFile(f) }]), ...read.map((r) => ['image', r])]);
   };
 
   return (
@@ -103,17 +125,8 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
           ))}
         </ul>
       )}
-      {images.length > 0 && (
-        <div className="thumbs">
-          {images.map((img, i) => (
-            <button key={i} className="thumb" title="Remove image" onClick={() => setImages(images.filter((_, j) => j !== i))}>
-              <img src={img.url} alt="" />
-            </button>
-          ))}
-        </div>
-      )}
       <textarea
-        ref={ref} rows={1} value={draft} disabled={disabled}
+        ref={ref} data-testid="composer-input" rows={1} value={draft} disabled={disabled}
         placeholder={lockedText || (disabled ? 'Starting Claude Code' : suggestion || 'Message Claude, or type / for skills and commands')}
         className={suggestion && !draft ? 'suggesting' : ''}
         onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} onPaste={onPaste}
@@ -139,7 +152,7 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
         <span className="hint">{suggestion && !draft ? 'Tab or → takes the suggestion, Enter sends' : 'Enter to send, Shift+Enter for a new line'}</span>
         {running
           ? <button className="stop" aria-label="Stop" onClick={onStop}><Icon name="stop" /><span className="label">Stop</span></button>
-          : <button className="primary" aria-label="Send" onClick={send} disabled={disabled || (!draft.trim() && !images.length)}><Icon name="send" /><span className="label">Send</span></button>}
+          : <button className="primary" aria-label="Send" onClick={send} disabled={disabled || !draft.trim()}><Icon name="send" /><span className="label">Send</span></button>}
       </div>
     </div>
   );

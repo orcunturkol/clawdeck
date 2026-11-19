@@ -70,7 +70,7 @@ export default function McpSection({ ready, rev }) {
 
   const on = servers?.filter((s) => s.status === 'connected').length ?? 0;
   return (
-    <Section title="MCP servers" icon="plug" summary={servers ? `${on} of ${servers.length} connected` : ''} defaultOpen>
+    <Section id="mcp" title="MCP servers" icon="plug" summary={servers ? `${on} of ${servers.length} connected` : ''} defaultOpen>
       {!servers && <p className="muted">{ready ? 'Checking servers' : 'Waiting for Claude Code'}</p>}
       {error && <p className="err">{error}</p>}
       <ul className="items">
