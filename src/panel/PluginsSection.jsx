@@ -22,7 +22,7 @@ export default function PluginsSection({ errors = [], onChanged }) {
 
   const on = plugins?.filter((p) => p.enabled).length ?? 0;
   return (
-    <Section title="Plugins" icon="cartridge" summary={plugins ? `${on} of ${plugins.length} on` : ''}>
+    <Section id="plugins" title="Plugins" icon="cartridge" summary={plugins ? `${on} of ${plugins.length} on` : ''}>
       {!plugins && !error && <p className="muted">Reading installed plugins</p>}
       {error && <p className="err">{error}</p>}
       <ul className="items">

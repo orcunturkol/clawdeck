@@ -54,7 +54,7 @@ export default function UsageSection({ ready, turns, live, accounts, chatAccount
   const five = merged.five_hour?.utilization;
 
   return (
-    <Section title="Usage" icon="gauge" summary={five != null ? `${Math.round(five)}% of 5-hour window` : ''} defaultOpen>
+    <Section id="usage" title="Usage" icon="gauge" summary={five != null ? `${Math.round(five)}% of 5-hour window` : ''} defaultOpen>
       {accounts?.list.length > 1 && chatAccount && <h4 className="sub-head">{chatAccount.email || chatAccount.name} (this chat)</h4>}
       {shown.length === 0 && <p className="muted">Plan limits show after Claude Code starts.</p>}
       {shown.map(([k, label]) => (

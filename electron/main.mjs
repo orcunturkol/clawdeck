@@ -19,6 +19,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
 if (process.env.CLAWDECK_PROFILE) app.setPath('userData', process.env.CLAWDECK_PROFILE);
 const STATE_FILE = path.join(app.getPath('userData'), 'state.json');
+const PANEL_FILE = path.join(app.getPath('userData'), 'panel.json');
 
 app.setName('Clawdeck');
 if (IS_WIN) app.setAppUserModelId('com.orcunturkol.clawdeck'); // taskbar grouping and the Start menu shortcut
@@ -395,6 +396,8 @@ const handlers = {
   'memory:read': ({ cwd, file }) => config.readMemory(cwd, file),
   'memory:write': ({ cwd, file, content }) => config.writeMemory(cwd, file, content),
   'settings:saveDefaults': (d) => config.saveDefaults(d),
+  'settings:panelGet': () => config.readPanelState(PANEL_FILE),
+  'settings:panelSet': (patch) => config.savePanelState(PANEL_FILE, patch),
 };
 
 for (const [channel, fn] of Object.entries(handlers)) {
