@@ -14,6 +14,7 @@ import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN, LOCAL_URL, LOCAL_CONTEXT } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
 import { Updater } from './update.mjs';
+import * as claudeCode from './claudeCode.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -398,6 +399,8 @@ const handlers = {
   'memory:read': ({ cwd, file }) => config.readMemory(cwd, file),
   'memory:write': ({ cwd, file, content }) => config.writeMemory(cwd, file, content),
   'settings:saveDefaults': (d) => config.saveDefaults(d),
+  'claudecode:info': () => claudeCode.info(),
+  'claudecode:update': () => claudeCode.update(),
 };
 
 for (const [channel, fn] of Object.entries(handlers)) {
