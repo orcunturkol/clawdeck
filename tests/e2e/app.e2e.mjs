@@ -108,6 +108,8 @@ test('git tree lists changes and opens a diff and VS Code', async () => {
     await files.filter({ hasText: 'a.txt' }).first().click();
     await page.locator('.git-diff .add', { hasText: 'two' }).waitFor();
     await page.getByTestId('open-vscode').first().click();
+    // Windows starts Code.exe itself, which a fake script cannot replace. The click must still not fail.
+    if (IS_WIN) { await page.waitForTimeout(1500); assert.equal(await page.locator('.panel .error').count(), 0); return; }
     const end = Date.now() + 10000;
     while (!existsSync(codeLog) && Date.now() < end) await page.waitForTimeout(200);
     assert.ok(existsSync(codeLog), 'fake code was not started');
