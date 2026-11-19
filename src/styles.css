@@ -507,3 +507,22 @@ button.item-main:hover { background: var(--raised); }
 .copy-btn.done { color: var(--green, inherit); }
 .tool-title { font-family: inherit; }
 .shell-title { font-family: inherit; }
+/* Git changes section (GitSection.jsx) */
+.git-bar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.git-project { border-top: 1px solid var(--line-soft); padding: 4px 0; }
+.git-head, .git-row-wrap { display: flex; align-items: center; }
+.git-title, .git-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; background: none; border: 0; border-radius: 3px; padding: 2px 8px; text-align: left; font-size: 13px; color: var(--ink); }
+.git-title:hover:not(:disabled), .git-row:hover:not(:disabled) { background: var(--raised); }
+.git-title .git-name { font-weight: 600; }
+.git-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-branch, .git-ab, .git-n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.git-n { margin-left: auto; }
+.git-counts { margin-left: auto; font-family: var(--mono); font-size: 11px; display: flex; gap: 6px; }
+.git-add { color: var(--green); }
+.git-del { color: var(--red); }
+.git-st { font-family: var(--mono); font-size: 11px; width: 18px; flex-shrink: 0; color: var(--amber-text); }
+.git-st.st-A, .git-st.st-u { color: var(--green); }
+.git-st.st-D, .git-st.st-U { color: var(--red); }
+.git-code { padding: 1px 6px; font-size: 11px; flex-shrink: 0; }
+.git-diff { margin: 2px 0 4px 8px; max-height: 260px; overflow: auto; font-size: 11px; }
+.git-clean { padding: 2px 8px; font-size: 12px; }

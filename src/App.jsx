@@ -354,7 +354,7 @@ export default function App() {
     <div className={`app side-${side}`} style={{ '--rail-w': layout.rail && `${layout.rail}px`, '--side-w': layout.side && `${layout.side}px`, '--browser-w': layout.browser && `${layout.browser}px` }}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
-        account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate}
+        account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate} cwd={cwd}
       />
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}

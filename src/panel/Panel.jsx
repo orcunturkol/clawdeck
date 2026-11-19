@@ -5,6 +5,7 @@ import McpSection from './McpSection.jsx';
 import PluginsSection from './PluginsSection.jsx';
 import MemorySection from './MemorySection.jsx';
 import ClaudeCodeSection from './ClaudeCodeSection.jsx';
+import GitSection from './GitSection.jsx';
 import { SkillsSection, CommandsSection, AgentsSection, HooksSection } from './ListSections.jsx';
 
 export default function Panel(props) {
@@ -24,6 +25,7 @@ export default function Panel(props) {
       <HooksSection cwd={cwd} rev={rev} />
       <MemorySection cwd={cwd} rev={rev} />
       <ClaudeCodeSection />
+      <GitSection />
     </aside>
   );
 }
