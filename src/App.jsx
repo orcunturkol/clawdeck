@@ -361,6 +361,7 @@ export default function App() {
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
         onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
         tab={railTab} setTab={setRailTab} version={version}
+        toolsOf={(id) => (viewing?.sessionId === id && viewT ? viewT.tools : chats[id]?.t.tools)}
       />
       <main className="chat">
         <Resizer edge="left" prop="--rail-w" min={180} onDone={(w) => savePane('rail', w)} />

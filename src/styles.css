@@ -496,3 +496,14 @@ button.item-main:hover { background: var(--raised); }
 .cc-progress span { display: block; width: 35%; height: 100%; background: var(--ink-2); animation: cc-slide 1.1s ease-in-out infinite; }
 @keyframes cc-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 .cc-out { margin: 0; padding: 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--raised); border-radius: 6px; }
+/* Copy buttons and tool titles */
+.copy-wrap { position: relative; }
+.copy-btn {
+  position: absolute; top: 6px; right: 6px; padding: 2px 8px; font: 11px var(--mono);
+  background: var(--code-bg); color: var(--muted, inherit); border: 1px solid var(--line); border-radius: 4px;
+  cursor: pointer; opacity: 0; transition: opacity .12s;
+}
+.copy-wrap:hover .copy-btn, .copy-btn:focus-visible, .copy-btn.done { opacity: 1; }
+.copy-btn.done { color: var(--green, inherit); }
+.tool-title { font-family: inherit; }
+.shell-title { font-family: inherit; }
