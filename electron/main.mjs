@@ -14,6 +14,8 @@ import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN, LOCAL_URL, LOCAL_CONTEXT } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
 import { Updater } from './update.mjs';
+import * as git from './git.mjs';
+import { openInEditor } from './editor.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -234,6 +236,13 @@ function createWindow() {
   win.on('unmaximize', () => emit({ type: 'window', maximized: false }));
 }
 
+// The folders Clawdeck knows: the open one, the recent ones and the live chats.
+const knownDirs = () => [...new Set([state.cwd, ...state.recent, ...[...sessions.values()].map((s) => s.cwd)])].filter((d) => d && isDir(d));
+const knownDir = (dir) => {
+  if (!knownDirs().includes(dir)) throw new Error('Not a known project folder');
+  return dir;
+};
+
 const handlers = {
   'win:minimize': () => win.minimize(),
   'win:maximize': () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
@@ -398,6 +407,10 @@ const handlers = {
   'memory:read': ({ cwd, file }) => config.readMemory(cwd, file),
   'memory:write': ({ cwd, file, content }) => config.writeMemory(cwd, file, content),
   'settings:saveDefaults': (d) => config.saveDefaults(d),
+
+  'git:projects': () => git.projects(knownDirs()),
+  'git:diff': ({ dir, file }) => git.fileDiff(knownDir(dir), file),
+  'editor:open': ({ dir, file, line }) => openInEditor({ dir: knownDir(dir), file, line }, { openPath: (p) => shell.openPath(p) }),
 };
 
 for (const [channel, fn] of Object.entries(handlers)) {
