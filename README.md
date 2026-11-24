@@ -21,6 +21,8 @@ MCP servers, and shows them in one window. Anthropic does not make Clawdeck.
 - **Running sessions.** Every Claude Code session and shell on the PC, with its ports and a Stop
   button. Rename sessions; the session that Claude answered last is at the top.
 - **Remote control.** Continue a chat in the Claude app or on claude.ai.
+- **Google Antigravity chats.** Set Agent to Antigravity in the Session section. The chat runs on the
+  Antigravity CLI (`agy`) and its Google login. Read the warning about Google's terms in the app first.
 - **Updates itself** on Windows and Linux.
 
 ![Chat with tool rows, and the control panel with session settings, usage limits and MCP servers](docs/screenshots/chat.png)
@@ -52,6 +54,32 @@ To install on Windows or Linux, see [INSTALL.md](INSTALL.md).
 │              │                               │  CLAUDE.md and memory  │
 └──────────────┴───────────────────────────────┴────────────────────────┘
 ```
+
+## Google Antigravity
+
+An Antigravity chat runs `agy acp` (the Agent Client Protocol server of the Antigravity CLI). One
+`agy` process serves all Antigravity chats. Clawdeck finds `agy` in `PATH`, in
+`%LOCALAPPDATA%gyin` on Windows or in `~/.local/bin` on Linux. `CLAWDECK_AGY` can name another
+binary.
+
+**Caution:** Google's Antigravity FAQ says that wrapping `agy` in another application is not
+supported on consumer plans. Google's terms say that the account can be suspended. Clawdeck shows
+this warning before the first Antigravity chat.
+
+An Antigravity chat has the chat, tool rows with diffs, approvals, plan approval, thinking, images,
+Stop, model, thinking level, permission mode, context use, commands, the session list, rename,
+history and the browser pane. These Claude Code features are not in an Antigravity chat:
+
+- Account switching and plan limits. Antigravity uses the Google login of `agy`.
+- Ultracode and the Web search switch. Antigravity has no such settings.
+- Remote control. `agy acp` has no remote control.
+- The MCP, plugin, hook and memory sections. Clawdeck does not show them for `agy` yet. Use
+  `agy mcp` and `agy plugin` in a terminal.
+
+Note: agy does not ask before it writes in a folder under the system temporary folder (`%TEMP%`).
+
+Tests: `npm test` checks the ACP translation with recorded `agy` output. `npm run e2e:agy` drives the
+app with the real `agy`, so `agy` must be installed and signed in.
 
 ## How it works
 
