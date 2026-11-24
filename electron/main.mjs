@@ -15,6 +15,9 @@ import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
 import { Updater } from './update.mjs';
+import * as claudeCode from './claudeCode.mjs';
+import * as git from './git.mjs';
+import { openInEditor } from './editor.mjs';
 import { AgySession, AgyLoginError, AGY, findAgy, listAgySessions, closeAcp } from './agy.mjs';
 import { browserPipe } from './browserPipe.mjs';
 
@@ -22,6 +25,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
 if (process.env.CLAWDECK_PROFILE) app.setPath('userData', process.env.CLAWDECK_PROFILE);
 const STATE_FILE = path.join(app.getPath('userData'), 'state.json');
+const PANEL_FILE = path.join(app.getPath('userData'), 'panel.json');
 
 app.setName('Clawdeck');
 if (IS_WIN) app.setAppUserModelId('com.orcunturkol.clawdeck'); // taskbar grouping and the Start menu shortcut
@@ -59,7 +63,7 @@ async function byLastAnswer(list, cwdOf, since) {
 }
 // agyTerms: the user read the warning about Google's terms. agyTitles: names given to Antigravity chats here.
 // agent: the agent of the last new chat ('claude' or 'antigravity'); New session uses it.
-let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {}, agyTerms: false, agyTitles: {}, agent: 'claude' };
+let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {}, layout: {}, agyTerms: false, agyTitles: {}, agent: 'claude' };
 
 // A folder on the command line opens there: clawdeck ~/project
 function folderArg(argv, cwd = process.cwd()) {
@@ -118,6 +122,17 @@ function trim() {
     sessions.delete(s.id);
     emit({ type: 'session-closed', sessionId: s.id });
   }
+}
+
+// The login's usage: live through one of its chats, else Claude Code's own cache. Neither sends a prompt.
+async function loginLimits() {
+  const s = [...sessions.values()].find((x) => x.account === LOGIN);
+  try {
+    const u = s && await s.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+    if (u?.rate_limits?.five_hour) return { live: true, limits: u.rate_limits, plan: u.subscription_type, session: u.session, at: Date.now() };
+  } catch {}
+  const c = await config.cachedLimits();
+  return { live: false, limits: c?.limits || null, at: c?.at || Date.now() };
 }
 
 // Usage per account, and the switch when an account reaches its limit.
@@ -272,12 +287,19 @@ function createWindow() {
   win.on('unmaximize', () => emit({ type: 'window', maximized: false }));
 }
 
+// The folders Clawdeck knows: the open one, the recent ones and the live chats.
+const knownDirs = () => [...new Set([state.cwd, ...state.recent, ...[...sessions.values()].map((s) => s.cwd)])].filter((d) => d && isDir(d));
+const knownDir = (dir) => {
+  if (!knownDirs().includes(dir)) throw new Error('Not a known project folder');
+  return dir;
+};
+
 const handlers = {
   'win:minimize': () => win.minimize(),
   'win:maximize': () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
   'win:close': () => win.close(),
 
-  'app:state': () => ({ ...state, home: HOME, claudePath, agyPath: agyPath || findAgy() }),
+  'app:state': () => ({ ...state, home: HOME, claudePath, version: app.getVersion(), agyPath: agyPath || findAgy() }),
   'app:updateState': () => updater.view(),
   'app:update': () => updater.install(),
   'dir:pick': async () => {
@@ -350,6 +372,11 @@ const handlers = {
     state.webSearch = Boolean(on);
     saveState();
     for (const s of sessions.values()) s.webSearch = state.webSearch;
+  },
+  // Pane widths in px, from the drag handles: { rail, side, browser }. Each drag saves one of them.
+  'app:setLayout': (l) => {
+    state.layout = { ...state.layout, ...l };
+    saveState();
   },
   'browser:bounds': (b) => pane.setBounds(b),
   'browser:hide': () => pane.hide(),
@@ -435,16 +462,13 @@ const handlers = {
   },
 
   'usage:limits': async () => {
-    // A token account cannot read the usage API, and Claude Code's cache belongs to the login; show what its chats saw last.
+    const login = await loginLimits();
+    if (login.limits) accounts.noteLimits(LOGIN, login.limits, login.at);
+    // A token account has no usage API; show what its chats saw last.
     const s = sessions.get(activeId);
     if (s?.provider) return { live: false, limits: null };
     if (s && s.account !== LOGIN) return { live: false, limits: accounts.find(s.account)?.usage || null };
-    try {
-      const u = await need().q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
-      return { live: true, limits: u.rate_limits, plan: u.subscription_type, session: u.session };
-    } catch {
-      return { live: false, limits: await config.cachedLimits() };
-    }
+    return login;
   },
   'usage:daily': () => dailyTokens(),
 
@@ -465,6 +489,14 @@ const handlers = {
   'memory:read': ({ cwd, file }) => config.readMemory(cwd, file),
   'memory:write': ({ cwd, file, content }) => config.writeMemory(cwd, file, content),
   'settings:saveDefaults': (d) => config.saveDefaults(d),
+  'settings:panelGet': () => config.readPanelState(PANEL_FILE),
+  'settings:panelSet': (patch) => config.savePanelState(PANEL_FILE, patch),
+  'claudecode:info': () => claudeCode.info(),
+  'claudecode:update': () => claudeCode.update(),
+
+  'git:projects': () => git.projects(knownDirs()),
+  'git:diff': ({ dir, file }) => git.fileDiff(knownDir(dir), file),
+  'editor:open': ({ dir, file, line }) => openInEditor({ dir: knownDir(dir), file, line }, { openPath: (p) => shell.openPath(p) }),
 };
 
 for (const [channel, fn] of Object.entries(handlers)) {

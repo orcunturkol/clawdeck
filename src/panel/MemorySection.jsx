@@ -56,7 +56,7 @@ export default function MemorySection({ cwd, rev }) {
   const groups = ['Instructions', 'Memory'];
   const count = files?.filter((f) => f.exists).length ?? 0;
   return (
-    <Section title="CLAUDE.md and memory" icon="notebook" summary={files ? `${count} file${count === 1 ? '' : 's'}` : ''}>
+    <Section id="memory" title="CLAUDE.md and memory" icon="notebook" summary={files ? `${count} file${count === 1 ? '' : 's'}` : ''}>
       {groups.map((g) => {
         const list = files?.filter((f) => f.group === g) || [];
         return (

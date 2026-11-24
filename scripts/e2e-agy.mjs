@@ -75,7 +75,7 @@ await step('Google terms warning shows before the first Antigravity chat', async
 await step('Antigravity chat shows its own panel, chip and modes', async () => {
   await page.waitForSelector('aside[aria-label="Antigravity control panel"]');
   await page.waitForFunction(() => [...document.querySelectorAll('.panel label.field')].find((l) => l.firstChild?.textContent === 'Model')?.querySelector('select').options.length > 3, null, { timeout: 30000 });
-  const chip = await page.locator('.account-chip:not(.update-chip)').innerText();
+  const chip = await page.locator('.account-chip:not(.update-chip):not([data-testid])').innerText();
   if (!/Antigravity/.test(chip)) throw new Error(`chip says ${chip}`);
   const modes = await page.locator('.composer .mode select option').allInnerTexts();
   if (modes.join() !== 'Ask before edits,Accept edits,Auto,Plan') throw new Error(`modes ${modes}`);

@@ -78,7 +78,7 @@ history and the browser pane. These Claude Code features are not in an Antigravi
 
 Note: agy does not ask before it writes in a folder under the system temporary folder (`%TEMP%`).
 
-Tests: `npm test` checks the ACP translation with recorded `agy` output. `npm run e2e:agy` drives the
+Tests: `npm test` also checks the ACP translation with recorded `agy` output. `npm run e2e:agy` drives the
 app with the real `agy`, so `agy` must be installed and signed in.
 
 ## How it works

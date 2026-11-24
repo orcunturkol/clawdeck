@@ -24,7 +24,7 @@ export class Session {
     const options = {
       pathToClaudeCodeExecutable: claudePath,
       cwd,
-      systemPrompt: { type: 'preset', preset: 'claude_code' },
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: 'Always set a short description on every Bash call, and say why the command runs, especially for background commands.' },
       includePartialMessages: true,
       promptSuggestions: true,
       allowDangerouslySkipPermissions: true,

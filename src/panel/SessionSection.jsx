@@ -30,7 +30,7 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
   const choices = agy ? [] : accounts?.list || [];
   const own = choices.find((a) => a.id === settings.account);
   return (
-    <Section title="Session" icon="sliders" summary={current?.displayName || ''} defaultOpen>
+    <Section id="session" title="Session" icon="sliders" summary={current?.displayName || ''} defaultOpen>
       <dl className="facts">
         <dt>Folder</dt><dd title={cwd}>{folderPath(cwd)}</dd>
         {!agy && choices.length < 2 && account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}

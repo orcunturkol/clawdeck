@@ -9,6 +9,7 @@ import Composer from './components/Composer.jsx';
 import Panel from './panel/Panel.jsx';
 import BrowserPane from './components/BrowserPane.jsx';
 import LoginBar, { AgyLoginBar } from './components/LoginBar.jsx';
+import Resizer from './components/Resizer.jsx';
 
 // Claude Code answers this way when it has no login on this computer.
 const loggedOut = (m) => (m.type === 'assistant' && m.error === 'authentication_failed')
@@ -46,6 +47,7 @@ export default function App() {
   const [rev, setRev] = useState(0);
   const [draft, setDraft] = useState('');
   const [side, setSide] = useState('panel');
+  const [layout, setLayout] = useState({}); // pane widths in px; styles.css has the defaults
   const [browser, setBrowser] = useState({});
   const [maximized, setMaximized] = useState(false);
   const [error, setError] = useState('');
@@ -53,6 +55,7 @@ export default function App() {
   const [agyLogin, setAgyLogin] = useState(null); // { dir, resume } of an Antigravity chat that waits for sign-in
   const [running, setRunning] = useState([]);
   const [update, setUpdate] = useState(null);
+  const [version, setVersion] = useState('');
   const [railTab, setRailTab] = useState('folder');
   const railTabRef = useRef(railTab);
   railTabRef.current = railTab;
@@ -150,6 +153,8 @@ export default function App() {
       home.dir = st.home;
       setRecent(st.recent || []);
       setWebSearchState(st.webSearch !== false);
+      setLayout(st.layout || {});
+      setVersion(st.version || '');
       call('accounts:list').then(setAccounts).catch(() => {});
       call('app:updateState').then(setUpdate).catch(() => {});
       setCwd(st.cwd);
@@ -217,7 +222,7 @@ export default function App() {
 
   // Every Claude Code process on this PC; cheap to read, so poll it.
   useEffect(() => {
-    const load = () => call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
+    const load = () => document.visibilityState === 'hidden' || call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
     load();
     const id = setInterval(load, 2000);
     return () => clearInterval(id);
@@ -331,6 +336,11 @@ export default function App() {
     call('app:update').catch((e) => setError(e.message));
   };
 
+  const savePane = (key, w) => {
+    setLayout((l) => ({ ...l, [key]: w }));
+    call('app:setLayout', { [key]: w }).catch(() => {});
+  };
+
   const setWebSearch = (on) => {
     setWebSearchState(on);
     call('session:setWebSearch', { on }).catch((e) => setError(e.message));
@@ -374,18 +384,22 @@ export default function App() {
   );
 
   return (
-    <div className={`app side-${side}`}>
+    <div className={`app side-${side}`} style={{ '--rail-w': layout.rail && `${layout.rail}px`, '--side-w': layout.side && `${layout.side}px`, '--browser-w': layout.browser && `${layout.browser}px` }}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
-        account={agy ? { name: 'Antigravity', agy: true } : chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate}
+        account={agy ? { name: 'Antigravity', agy: true } : chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate} cwd={cwd}
       />
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
         onNew={() => { setViewing(null); start(cwd); }} onOpen={(id, provider) => { setViewing(null); start(cwd, id, provider); }}
         onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
-        tab={railTab} setTab={setRailTab}
+        tab={railTab} setTab={setRailTab} version={version}
+        toolsOf={(id) => (viewing?.sessionId === id && viewT ? viewT.tools : chats[id]?.t.tools)}
       />
       <main className="chat">
+        <Resizer edge="left" prop="--rail-w" min={180} onDone={(w) => savePane('rail', w)} />
+        {side === 'panel' && <Resizer edge="right" prop="--side-w" min={300} onDone={(w) => savePane('side', w)} />}
+        {side === 'browser' && <Resizer edge="right" prop="--browser-w" min={480} onDone={(w) => savePane('browser', w)} />}
         {viewing && (
           <div className="viewing-bar">
             <span>You are reading a session that runs in {viewing.where === 'terminal' ? 'a terminal tab' : 'another app'} in {baseName(viewing.cwd)}. Reply to it there.</span>

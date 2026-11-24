@@ -9,7 +9,7 @@ function updateLabel(u) {
   return [u.how === 'page' ? `Clawdeck ${u.version} is out` : `Update to ${u.version}`, true];
 }
 
-export default function TopBar({ title, side, setSide, maximized, browserBusy, account, onAccount, update, onUpdate }) {
+export default function TopBar({ title, side, setSide, maximized, browserBusy, account, onAccount, update, onUpdate, cwd }) {
   const [label, ready] = update ? updateLabel(update) : [];
   return (
     <header className="topbar">
@@ -28,6 +28,7 @@ export default function TopBar({ title, side, setSide, maximized, browserBusy, a
             <Icon name="person" /><span>{account.email || account.name}</span>
           </button>
         )}
+        {cwd && <button className="account-chip" data-testid="open-vscode" onClick={() => call('editor:open', { dir: cwd }).catch(() => {})} title="Open this project folder in VS Code."><span>Open in VS Code</span></button>}
         <div className="side-switch" role="group" aria-label="Right side">
           <button aria-pressed={side === 'panel'} onClick={() => setSide('panel')}><Icon name="panel" />Panel</button>
           <button aria-pressed={side === 'browser'} onClick={() => setSide('browser')}>

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, readdir, mkdir, stat } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir, stat, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { HOME, CLAUDE_DIR, projectSlug, claudeCommand } from './env.mjs';
 
@@ -112,8 +112,29 @@ export async function saveDefaults({ model, effortLevel, defaultMode }) {
   await writeFile(USER_SETTINGS, JSON.stringify(s, null, 2) + '\n', 'utf8');
 }
 
-// Last known plan limits, used before a session answers.
+// Open or closed state of the right-panel sections, kept in one small file in the app profile.
+export async function readPanelState(file) {
+  const s = await readJson(file);
+  const open = s && typeof s.open === 'object' && s.open ? s.open : {};
+  return { open: Object.fromEntries(Object.entries(open).filter(([, v]) => typeof v === 'boolean')) };
+}
+
+let panelWrite = Promise.resolve();
+// Merge a { id: boolean } patch into the file. Writes run one at a time and swap in whole files.
+export function savePanelState(file, patch) {
+  panelWrite = panelWrite.catch(() => {}).then(async () => {
+    const { open } = await readPanelState(file);
+    for (const [id, v] of Object.entries(patch || {})) if (typeof v === 'boolean') open[id] = v;
+    await mkdir(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    await writeFile(tmp, JSON.stringify({ open }, null, 2) + '\n', 'utf8');
+    await rename(tmp, file);
+  });
+  return panelWrite;
+}
+
+// The login's last known plan limits, as Claude Code saved them, and when it read them.
 export async function cachedLimits() {
-  const j = await readJson(path.join(HOME, '.claude.json'));
-  return j?.cachedUsageUtilization?.utilization || null;
+  const c = (await readJson(path.join(HOME, '.claude.json')))?.cachedUsageUtilization;
+  return c?.utilization ? { limits: c.utilization, at: c.fetchedAtMs || null } : null;
 }

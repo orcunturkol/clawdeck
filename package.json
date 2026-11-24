@@ -1,7 +1,7 @@
 {
   "name": "clawdeck",
   "productName": "Clawdeck",
-  "version": "0.3.1",
+  "version": "0.5.1",
   "description": "Desktop app for Claude Code on Linux and Windows",
   "private": true,
   "type": "module",
@@ -9,11 +9,12 @@
   "scripts": {
     "setup": "npm install && node node_modules/electron/install.js && vite build",
     "build": "vite build",
-    "test": "node --test \"test/*.test.mjs\"",
     "e2e:agy": "vite build && node scripts/e2e-agy.mjs",
     "start": "vite build && electron .",
     "app": "electron .",
     "shot": "node scripts/shot.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.mjs",
     "install-desktop": "sh scripts/install-desktop.sh",
     "icons": "node scripts/icons.mjs",
     "app-icon": "node scripts/app-icon.mjs",
