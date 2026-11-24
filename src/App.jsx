@@ -8,7 +8,7 @@ import Transcript from './components/Transcript.jsx';
 import Composer from './components/Composer.jsx';
 import Panel from './panel/Panel.jsx';
 import BrowserPane from './components/BrowserPane.jsx';
-import LoginBar from './components/LoginBar.jsx';
+import LoginBar, { AgyLoginBar } from './components/LoginBar.jsx';
 import Resizer from './components/Resizer.jsx';
 
 // Claude Code answers this way when it has no login on this computer.
@@ -25,8 +25,16 @@ function bridgeState(c, m) {
   return { remote: 'connecting' };
 }
 
+const AGY = 'antigravity';
+const AGY_TERMS = 'Clawdeck runs Google Antigravity (agy) with your Google login.\n\n'
+  + 'Google\'s Antigravity FAQ says: "Wrapping agy inside third-party coding agents or applications, or automating account rotation, is not supported under consumer plans." '
+  + 'Google\'s Antigravity Terms say that third-party access "may be grounds for suspension or termination" of your Antigravity and Gemini CLI accounts.\n\n'
+  + 'A Gemini Enterprise login or a Gemini API key in agy does not have this limit.\n\nStart Antigravity chats in Clawdeck?';
+// The name of the agent of a chat, for messages.
+const agentName = (c) => (c?.provider === AGY ? 'Antigravity' : 'Claude Code');
+
 // Everything one chat needs on screen. Each open chat keeps its own copy.
-const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off', settings: null });
+const blankChat = () => ({ t: emptyTranscript(), init: null, cost: 0, turns: 0, cwd: '', error: '', suggestion: '', ended: false, remote: 'off', settings: null, provider: null });
 const NO_SETTINGS = { model: '', effort: '', ultracode: false, mode: 'default' };
 
 export default function App() {
@@ -44,6 +52,7 @@ export default function App() {
   const [maximized, setMaximized] = useState(false);
   const [error, setError] = useState('');
   const [webSearch, setWebSearchState] = useState(true);
+  const [agyLogin, setAgyLogin] = useState(null); // { dir, resume } of an Antigravity chat that waits for sign-in
   const [running, setRunning] = useState([]);
   const [update, setUpdate] = useState(null);
   const [version, setVersion] = useState('');
@@ -80,11 +89,11 @@ export default function App() {
       const info = await call('session:init', { sessionId: id });
       patch(id, (c) => ({ init: info, ...(info.current_permission_mode && c.settings && { settings: { ...c.settings, mode: info.current_permission_mode } }) }));
     } catch (e) {
-      patch(id, () => ({ error: `Claude Code did not start: ${e.message}` }));
+      patch(id, (c) => ({ error: `${agentName(c)} did not start: ${e.message}` }));
     }
   }, [patch]);
 
-  const start = useCallback(async (dir, resume) => {
+  const start = useCallback(async (dir, resume, provider) => {
     const known = resume && chatsRef.current[resume];
     // The open chat is already live: nothing to do.
     if (resume && resume === current.current && known && !known.ended) return;
@@ -98,11 +107,21 @@ export default function App() {
     // The main process picks the chat's model, effort and mode: its own ones, or the saved defaults.
     let r;
     try {
-      r = await call('session:start', { cwd: dir, resume });
+      r = await call('session:start', { cwd: dir, resume, provider });
     } catch (e) {
+      // Antigravity: Google's terms come first, once; then agy must be signed in.
+      if (e.message === 'AGY_TERMS') {
+        if (window.confirm(AGY_TERMS)) {
+          await call('session:acceptAgyTerms');
+          startRef.current(dir, resume, provider);
+        }
+        return;
+      }
+      if (e.message === 'AGY_LOGIN') { setAgyLogin({ dir, resume }); return; }
       setError(e.message);
       return;
     }
+    setAgyLogin(null);
     current.current = r.sessionId;
     setSessionId(r.sessionId);
     setDraft(drafts.current[r.sessionId] || '');
@@ -118,13 +137,15 @@ export default function App() {
       patch(r.sessionId, () => ({ settings: r.settings, account: r.account }));
       return;
     }
-    patch(r.sessionId, () => ({ ...blankChat(), cwd: r.cwd, settings: r.settings, account: r.account, t: resume ? { ...emptyTranscript(), loading: true } : emptyTranscript() }));
+    patch(r.sessionId, () => ({ ...blankChat(), cwd: r.cwd, settings: r.settings, account: r.account, provider: r.provider || null, t: resume ? { ...emptyTranscript(), loading: true } : emptyTranscript() }));
     if (resume) {
       const msgs = await call('sessions:messages', { id: resume, cwd: r.cwd }).catch(() => []);
       patch(r.sessionId, () => ({ t: fromHistory(msgs) }));
     }
     loadInit(r.sessionId);
   }, [loadInit, loadSessions, patch]);
+  const startRef = useRef(start);
+  startRef.current = start;
 
   useEffect(() => {
     (async () => {
@@ -171,11 +192,13 @@ export default function App() {
       }
       case 'running': patch(id, (c) => ({ t: { ...c.t, running: e.running } })); break;
       case 'settings': patch(id, () => ({ settings: e.settings })); break;
+      // Antigravity sends its commands and options after the chat starts.
+      case 'init': patch(id, (c) => ({ init: { ...(c.init || {}), ...e.init } })); break;
       case 'permission': patch(id, (c) => ({ t: { ...c.t, permissions: [...c.t.permissions, e] } })); break;
       case 'permission-cancel': patch(id, (c) => ({ t: { ...c.t, permissions: c.t.permissions.filter((p) => p.id !== e.id) } })); break;
       case 'error': patch(id, () => ({ error: `${e.message}${e.detail ? `\n${e.detail}` : ''}` })); break;
       case 'session-ended':
-        patch(id, (c) => ({ ended: true, error: 'Claude Code stopped in this chat. Click it in the list to open it again.', t: { ...c.t, running: false } }));
+        patch(id, (c) => ({ ended: true, error: `${agentName(c)} stopped in this chat. Click it in the list to open it again.`, t: { ...c.t, running: false } }));
         break;
       // Closed to save memory while idle; clicking it opens it again from its history.
       case 'session-closed': patch(id, () => ({ ended: true })); break;
@@ -237,9 +260,9 @@ export default function App() {
     setTimeout(() => call('running:list').then(setRunning).catch(() => {}), 600);
   };
 
-  const rename = async (id, dir, title) => {
+  const rename = async (id, dir, title, provider) => {
     try {
-      await call('sessions:rename', { id, cwd: dir, title });
+      await call('sessions:rename', { id, cwd: dir, title, provider });
     } catch (e) { setError(e.message); }
     loadSessions(cwdRef.current);
     call('running:list', { detail: railTabRef.current === 'running' }).then(setRunning).catch(() => {});
@@ -275,8 +298,16 @@ export default function App() {
   const setModel = (model) => change('model', model, 'session:setModel', { model: model === 'default' ? '' : model });
   const setEffort = (effort) => change('effort', effort, 'session:setEffort', { effort });
   const setUltracode = (on) => change('ultracode', on, 'session:setUltracode', { on });
+  // The agent cannot take a chat's history along: a new chat with it opens in the same folder.
+  // An empty chat closes when you leave it, so in an empty chat the agent seems to change in place.
+  const setAgent = (agent) => {
+    if (agent === (cur.provider || 'claude')) return;
+    setViewing(null);
+    start(cwd, undefined, agent);
+  };
   const setAccount = (account) => change('account', account, 'session:setAccount', { account });
-  const chatAccount = accounts?.list.find((a) => a.id === cur.account);
+  const agy = cur.provider === AGY;
+  const chatAccount = agy ? null : accounts?.list.find((a) => a.id === cur.account);
 
   const setRemote = async (on) => {
     const id = current.current;
@@ -346,7 +377,9 @@ export default function App() {
     <div className="empty">
       <h1>{baseName(cwd)}</h1>
       <p className="muted">{folderPath(cwd)}</p>
-      <p>{init ? 'Claude Code is ready in this folder, with your login, settings, plugins and MCP servers.' : 'Starting Claude Code in this folder.'}</p>
+      {agy
+        ? <p>{init ? 'Antigravity is ready in this folder, with the Google login of agy.' : 'Starting Antigravity in this folder.'}</p>
+        : <p>{init ? 'Claude Code is ready in this folder, with your login, settings, plugins and MCP servers.' : 'Starting Claude Code in this folder.'}</p>}
     </div>
   );
 
@@ -354,11 +387,11 @@ export default function App() {
     <div className={`app side-${side}`} style={{ '--rail-w': layout.rail && `${layout.rail}px`, '--side-w': layout.side && `${layout.side}px`, '--browser-w': layout.browser && `${layout.browser}px` }}>
       <TopBar
         title={title} side={side} setSide={(v) => setSide(side === v ? 'none' : v)} maximized={maximized} browserBusy={browser.busy}
-        account={chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate} cwd={cwd}
+        account={agy ? { name: 'Antigravity', agy: true } : chatAccount} onAccount={() => setSide('panel')} update={update} onUpdate={runUpdate} cwd={cwd}
       />
       <Sessions
         cwd={cwd} recent={recent} sessions={sessions} activeId={viewing ? viewing.sessionId : sessionId} running={running}
-        onNew={() => { setViewing(null); start(cwd); }} onOpen={(id) => { setViewing(null); start(cwd, id); }}
+        onNew={() => { setViewing(null); start(cwd); }} onOpen={(id, provider) => { setViewing(null); start(cwd, id, provider); }}
         onView={view} onStopShell={stopShell} onCloseChat={closeChat} onRename={rename} onPickDir={pickDir} onDir={openFolder}
         tab={railTab} setTab={setRailTab} version={version}
         toolsOf={(id) => (viewing?.sessionId === id && viewT ? viewT.tools : chats[id]?.t.tools)}
@@ -376,6 +409,9 @@ export default function App() {
         {shown?.loading
           ? <div className="transcript"><p className="muted pad">Loading session</p></div>
           : <Transcript t={shown} answer={answer} empty={empty} />}
+        {!viewing && agyLogin && (
+          <AgyLoginBar onRetry={() => start(agyLogin.dir, agyLogin.resume, AGY)} onDismiss={() => setAgyLogin(null)} />
+        )}
         {!viewing && cur.loginNeeded && (
           <LoginBar
             onDismiss={() => patch(current.current, () => ({ loginNeeded: false }))}
@@ -391,7 +427,7 @@ export default function App() {
         <Composer
           running={t.running} disabled={!sessionId || Boolean(viewing)} commands={init?.commands || []}
           mode={settings.mode} setMode={setMode} draft={draft} setDraft={setDraft}
-          webSearch={webSearch} setWebSearch={setWebSearch}
+          webSearch={webSearch} setWebSearch={setWebSearch} provider={cur.provider} modes={agy ? init?.modes : null}
           remote={cur.remote} setRemote={setRemote}
           suggestion={viewing || t.running ? '' : cur.suggestion}
           lockedText={viewing ? 'Go back to your session to write a message' : ''}
@@ -401,8 +437,9 @@ export default function App() {
       {side === 'browser' && <BrowserPane state={browser} />}
       {side === 'panel' && (
         <Panel
-          init={init} cwd={cwd} rev={rev} turns={cur.turns} sessionCost={cur.cost} accounts={accounts}
+          init={init} cwd={cwd} rev={rev} turns={cur.turns} sessionCost={cur.cost} accounts={accounts} provider={cur.provider}
           liveLimits={chatAccount?.usage} chatAccount={chatAccount}
+          setAgent={setAgent}
           settings={settings} setModel={setModel} setEffort={setEffort} setUltracode={setUltracode} setMode={setMode} setAccount={setAccount}
           onInsert={(text) => setDraft(text)} onPluginsChanged={onPluginsChanged}
         />

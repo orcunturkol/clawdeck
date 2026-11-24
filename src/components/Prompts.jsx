@@ -54,7 +54,7 @@ function AskUser({ p, answer }) {
 function Plan({ p, answer }) {
   return (
     <div className="prompt">
-      <p className="prompt-title">Claude's plan is ready</p>
+      <p className="prompt-title">{p.agent || 'Claude'}'s plan is ready</p>
       <div className="plan"><Markdown text={p.input.plan || 'Claude is ready to leave plan mode and start work.'} /></div>
       <div className="prompt-actions">
         <button className="primary" onClick={() => answer(p.id, { allow: true })}>Approve plan</button>
@@ -68,7 +68,7 @@ function Permission({ p, answer }) {
   const label = toolLabel(p.toolName);
   return (
     <div className="prompt">
-      <p className="prompt-title">{p.title || `Claude wants to use ${label.name}${label.server ? ` from ${label.server}` : ''}`}</p>
+      <p className="prompt-title">{p.title || `${p.agent || 'Claude'} wants to use ${label.name}${label.server ? ` from ${label.server}` : ''}`}</p>
       {p.decisionReason && <p className="prompt-reason">{p.decisionReason}</p>}
       {p.blockedPath && <p className="prompt-reason">Path outside the allowed folders: {p.blockedPath}</p>}
       <div className="prompt-body"><ToolInput name={p.toolName} input={p.input} /></div>

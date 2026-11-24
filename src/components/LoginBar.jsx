@@ -69,3 +69,29 @@ export default function LoginBar({ onDone, onDismiss }) {
     </div>
   );
 }
+
+// Antigravity is not signed in: agy signs in only in its own terminal window.
+export function AgyLoginBar({ onRetry, onDismiss }) {
+  const [opened, setOpened] = useState(false);
+  const [error, setError] = useState('');
+  const open = async () => {
+    setError('');
+    try {
+      await call('accounts:agyLogin');
+      setOpened(true);
+    } catch (e) { setError(e.message); }
+  };
+  return (
+    <div className="login-bar" role="alert">
+      <div className="login-row">
+        <p>{opened
+          ? 'Sign in with Google in the agy window. When agy shows its prompt, close that window and click Try again.'
+          : 'Antigravity (agy) is not signed in on this computer.'}</p>
+        <button className={opened ? '' : 'primary'} onClick={open}>Open sign-in window</button>
+        <button className={opened ? 'primary' : ''} onClick={onRetry}>Try again</button>
+        <button className="ghost" onClick={onDismiss}>Dismiss</button>
+      </div>
+      {error && <pre>{error}</pre>}
+    </div>
+  );
+}
