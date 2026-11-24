@@ -14,6 +14,7 @@ const PLACE_ICON = { 'this window': 'window', terminal: 'terminal' };
 
 export function where(r) {
   if (r.mine) return 'this window';
+  if (r.entrypoint === 'antigravity') return 'Antigravity';
   if (r.entrypoint === 'cli') return 'terminal';
   if (r.entrypoint?.startsWith('sdk')) return 'app';
   return r.entrypoint || 'unknown';
@@ -92,7 +93,7 @@ function Running({ running, activeId, onView, onStop, onClose, onRename }) {
                   <div className="run-main">
                     <span className="led" />
                     <Icon name={PLACE_ICON[where(r)] || 'app'} className="run-icon" />
-                    <TitleEdit value={r.title || r.name} className="run-title" onDone={(name) => { setEditing(null); if (name) onRename(r.sessionId, r.cwd, name); }} />
+                    <TitleEdit value={r.title || r.name} className="run-title" onDone={(name) => { setEditing(null); if (name) onRename(r.sessionId, r.cwd, name, r.provider); }} />
                     <span className="run-meta">{baseName(r.cwd)}, {where(r)}, {label.toLowerCase()}</span>
                   </div>
                 ) : (
@@ -161,12 +162,12 @@ export default function Sessions({ cwd, recent, sessions, activeId, running, onN
               <div key={s.sessionId} className="session-row">
                 {editing === s.sessionId ? (
                   <div className={cls}>
-                    <TitleEdit value={title} className="session-title" onDone={(name) => { setEditing(null); if (name) onRename(s.sessionId, s.cwd || cwd, name); }} />
+                    <TitleEdit value={title} className="session-title" onDone={(name) => { setEditing(null); if (name) onRename(s.sessionId, s.cwd || cwd, name, s.provider); }} />
                     {meta}
                   </div>
                 ) : (
-                  <button className={cls} onClick={() => (r && !r.mine ? onView(r) : onOpen(s.sessionId))}>
-                    <span className="session-title">{r && <span className="led" />}{title}</span>
+                  <button className={cls} onClick={() => (r && !r.mine ? onView(r) : onOpen(s.sessionId, s.provider))}>
+                    <span className="session-title">{r && <span className="led" />}{s.provider === 'antigravity' && <span className="agy-badge" title="Google Antigravity chat">AG</span>}{title}</span>
                     {meta}
                   </button>
                 )}

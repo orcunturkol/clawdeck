@@ -23,7 +23,8 @@ export default function TopBar({ title, side, setSide, maximized, browserBusy, a
           </button>
         )}
         {account && (
-          <button className={`account-chip ${account.blocked ? 'blocked' : ''}`} onClick={onAccount} title="The active Claude account. New prompts use it. Click to see all accounts.">
+          <button className={`account-chip ${account.blocked ? 'blocked' : ''}`} onClick={onAccount}
+            title={account.agy ? 'This chat runs on Google Antigravity (agy), with the Google login of agy.' : 'The active Claude account. New prompts use it. Click to see all accounts.'}>
             <Icon name="person" /><span>{account.email || account.name}</span>
           </button>
         )}

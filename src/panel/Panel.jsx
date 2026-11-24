@@ -5,8 +5,30 @@ import McpSection from './McpSection.jsx';
 import PluginsSection from './PluginsSection.jsx';
 import MemorySection from './MemorySection.jsx';
 import { SkillsSection, CommandsSection, AgentsSection, HooksSection } from './ListSections.jsx';
+import Section from './Section.jsx';
+
+// An Antigravity chat: the parts of the panel that Antigravity has. Accounts, plan limits, MCP and plugins
+// belong to Claude Code; agy keeps its own.
+function AgyPanel(props) {
+  const { init, onInsert } = props;
+  return (
+    <aside className="panel" aria-label="Antigravity control panel">
+      <SessionSection {...props} />
+      <Section title="Antigravity" icon="person" summary={init?.account?.subscriptionType || ''} defaultOpen>
+        <dl className="facts">
+          <dt>Login</dt><dd>Google login of agy{init?.account?.subscriptionType ? `, ${init.account.subscriptionType}` : ''}</dd>
+          {init?.agy_version && <><dt>agy</dt><dd>{init.agy_version}</dd></>}
+        </dl>
+        <p className="muted">Account switching and plan limits are not available for Antigravity chats.</p>
+        <p className="muted">Antigravity keeps its own MCP servers, plugins and rules. Manage them with <code>agy mcp</code> and <code>agy plugin</code> in a terminal. The Clawdeck browser pane is on.</p>
+      </Section>
+      <SkillsSection commands={init?.commands || []} onInsert={onInsert} />
+    </aside>
+  );
+}
 
 export default function Panel(props) {
+  if (props.provider === 'antigravity') return <AgyPanel {...props} />;
   const { init, cwd, rev, turns, liveLimits, onInsert, onPluginsChanged } = props;
   const ready = Boolean(init);
   const commands = init?.commands || [];

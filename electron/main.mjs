@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage } 
 import { listSessions, getSessionMessages, getSessionInfo, renameSession, query } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, writeFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadLoginPath, findClaude, HOME, IS_WIN } from './env.mjs';
@@ -14,6 +15,8 @@ import { listRunning, stopShell } from './running.mjs';
 import { Accounts, LOGIN } from './accounts.mjs';
 import { signIn, CliLogin } from './login.mjs';
 import { Updater } from './update.mjs';
+import { AgySession, AgyLoginError, AGY, findAgy, listAgySessions, closeAcp } from './agy.mjs';
+import { browserPipe } from './browserPipe.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Tests run with their own profile so they do not touch an open Clawdeck window.
@@ -25,6 +28,8 @@ if (IS_WIN) app.setAppUserModelId('com.orcunturkol.clawdeck'); // taskbar groupi
 else app.setDesktopName('clawdeck.desktop');
 loadLoginPath();
 let claudePath = findClaude();
+let agyPath = findAgy();
+let agyBrowser = null; // the browser pane tools for Antigravity chats, made on first use
 
 let win = null;
 let pane = null;
@@ -52,7 +57,9 @@ async function byLastAnswer(list, cwdOf, since) {
   for (const r of list) r.lastAnswer = (await lastAnswer(r.sessionId, cwdOf(r))) || since(r) || 0;
   return list.sort((a, b) => b.lastAnswer - a.lastAnswer);
 }
-let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {} };
+// agyTerms: the user read the warning about Google's terms. agyTitles: names given to Antigravity chats here.
+// agent: the agent of the last new chat ('claude' or 'antigravity'); New session uses it.
+let state = { cwd: HOME, recent: [], webSearch: true, chatSettings: {}, agyTerms: false, agyTitles: {}, agent: 'claude' };
 
 // A folder on the command line opens there: clawdeck ~/project
 function folderArg(argv, cwd = process.cwd()) {
@@ -115,7 +122,7 @@ function trim() {
 
 // Usage per account, and the switch when an account reaches its limit.
 function watchLimits(s, m) {
-  if (!s) return;
+  if (!s || s.provider) return;
   if (m.type === 'rate_limit_event') {
     s.lastLimit = m.rate_limit_info;
     accounts.note(s.account, m.rate_limit_info);
@@ -147,6 +154,7 @@ function accountOptions(own, current = null) {
 
 // A chat moves to another account: its process starts again on the same history.
 function restartSession(s, { continued = false, quiet = false } = {}) {
+  if (s.provider) return s; // an Antigravity chat has no account or flags to start again with
   s.close();
   const next = new Session({
     cwd: s.cwd, resume: s.fresh ? undefined : s.id, id: s.id, model: s.settings.model, effort: s.settings.effort, ultracode: s.settings.ultracode, permissionMode: s.settings.mode,
@@ -170,8 +178,38 @@ function needClaude() {
   return claudePath;
 }
 
-async function startSession({ cwd, resume }) {
-  needClaude();
+// Antigravity may be installed while the app is open, so look again before a chat starts.
+function needAgy() {
+  agyPath = agyPath || findAgy();
+  if (!agyPath) {
+    throw new Error(IS_WIN
+      ? 'Antigravity CLI (agy) was not found. Install it (https://antigravity.google/docs/install/), run `agy` once to sign in, then try again.'
+      : 'Antigravity CLI (agy) was not found in PATH or ~/.local/bin. Install it (https://antigravity.google/docs/install/), run `agy` once to sign in, then try again.');
+  }
+  return agyPath;
+}
+
+async function startAgySession({ cwd, resume }) {
+  needAgy();
+  // The renderer shows Google's terms first; it catches this text.
+  if (!state.agyTerms) throw new Error('AGY_TERMS');
+  const saved = (resume && state.chatSettings[resume]) || {};
+  agyBrowser = agyBrowser || browserPipe(pane, app.getPath('userData'));
+  try {
+    return await AgySession.open({
+      agyPath, cwd, resume, model: saved.model, effort: saved.effort, permissionMode: saved.mode,
+      emit: sessionEmit, mcpServers: [agyBrowser],
+    });
+  } catch (e) {
+    if (e instanceof AgyLoginError) throw new Error('AGY_LOGIN');
+    throw e;
+  }
+}
+
+async function startSession({ cwd, resume, provider }) {
+  // An old chat keeps its agent; a new one uses the one asked for, or the last one picked.
+  const agy = (provider || (resume ? state.chatSettings[resume]?.provider : state.agent)) === AGY;
+  if (!agy) needClaude();
   const d = await config.readDefaults(); // read first, so no other start runs between the checks below
   const live = resume && sessions.get(resume);
   const dir = live ? live.cwd : cwd;
@@ -183,6 +221,16 @@ async function startSession({ cwd, resume }) {
     live.lastUsed = Date.now();
     return { sessionId: live.id, cwd: dir, live: true, settings: live.settings, account: live.account };
   }
+  if (agy) {
+    const s = await startAgySession({ cwd: dir, resume });
+    s.lastUsed = Date.now();
+    sessions.set(s.id, s);
+    activeId = s.id;
+    if (!resume) state.agent = AGY;
+    rememberSettings(s.id, s.settings); // saves the state too
+    trim();
+    return { sessionId: s.id, cwd: dir, live: false, settings: s.settings, account: AGY, provider: AGY };
+  }
   // A chat opened again keeps its own values; a new one starts with the saved defaults and the folder's account.
   const { model, effort, ultracode, mode, account } = (resume && state.chatSettings[resume]) || { model: d.model, effort: d.effortLevel, mode: d.defaultMode };
   const s = new Session({
@@ -192,6 +240,7 @@ async function startSession({ cwd, resume }) {
   s.lastUsed = Date.now();
   sessions.set(s.id, s);
   activeId = s.id;
+  if (!resume && state.agent !== 'claude') { state.agent = 'claude'; saveState(); }
   trim();
   return { sessionId: s.id, cwd: dir, live: false, settings: s.settings, account: s.account };
 }
@@ -228,7 +277,7 @@ const handlers = {
   'win:maximize': () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
   'win:close': () => win.close(),
 
-  'app:state': () => ({ ...state, home: HOME, claudePath }),
+  'app:state': () => ({ ...state, home: HOME, claudePath, agyPath: agyPath || findAgy() }),
   'app:updateState': () => updater.view(),
   'app:update': () => updater.install(),
   'dir:pick': async () => {
@@ -240,7 +289,7 @@ const handlers = {
   'session:send': ({ sessionId, text, images }) => {
     let s = need(sessionId);
     // An idle chat whose account should change (a limit ended, or you picked another one) moves before it sends.
-    if (s.account !== accounts.pick(s.settings.account, s.account) && !s.running && s.pending.size === 0) s = restartSession(s);
+    if (!s.provider && s.account !== accounts.pick(s.settings.account, s.account) && !s.running && s.pending.size === 0) s = restartSession(s);
     s.lastUsed = Date.now();
     s.send(text, images);
   },
@@ -248,6 +297,7 @@ const handlers = {
   // This chat and new chats in its folder use the account.
   'session:setAccount': ({ sessionId, account }) => {
     let s = need(sessionId);
+    if (s.provider) throw new Error('An Antigravity chat uses the Google login of agy. Account switching is not available.');
     accounts.setFolder(s.cwd, account);
     s.set({ account });
     if (s.account !== accounts.pick(account, s.account) && !s.running && s.pending.size === 0) s = restartSession(s);
@@ -266,28 +316,33 @@ const handlers = {
   'session:answer': ({ sessionId, id, ...answer }) => need(sessionId).answerPermission(id, answer),
   'session:init': async ({ sessionId }) => {
     const s = need(sessionId);
+    if (s.provider) return { ...s.initInfo(), sessionId: s.id, cwd: s.cwd };
     const init = await s.q.initializationResult();
     if (s.account === LOGIN && init.account?.email) accounts.label(LOGIN, init.account.email);
     return { ...init, sysinit: s.init || null, sessionId: s.id, cwd: s.cwd };
   },
   'session:setModel': async ({ sessionId, model }) => {
     const s = need(sessionId);
+    if (s.provider) { await s.setModel(model); return; }
     await s.q.setModel(model || undefined);
     s.set({ model: model || '' });
   },
   'session:setMode': async ({ sessionId, mode }) => {
     const s = need(sessionId);
+    if (s.provider) { await s.setMode(mode); return; }
     await s.q.setPermissionMode(mode);
     s.set({ mode });
   },
   'session:setEffort': async ({ sessionId, effort }) => {
     const s = need(sessionId);
+    if (s.provider) { await s.setEffort(effort); return; }
     // A new effort level alone turns ultracode off, so send it along to keep it on.
     await s.q.applyFlagSettings({ effortLevel: effort || null, ...(s.settings.ultracode && { ultracode: true }) });
     s.set({ effort: effort || '' });
   },
   'session:setUltracode': async ({ sessionId, on }) => {
     const s = need(sessionId);
+    if (s.provider) throw new Error('Ultracode is not available for Antigravity chats.');
     await s.q.applyFlagSettings({ ultracode: Boolean(on) });
     s.set({ ultracode: Boolean(on) });
   },
@@ -309,27 +364,49 @@ const handlers = {
     // Without a registry entry (an unknown Claude Code layout), this window still lists its own chats.
     for (const s of sessions.values()) {
       if (!list.some((r) => r.sessionId === s.id)) {
-        list.push({ pid: 0, sessionId: s.id, cwd: s.cwd, name: '', entrypoint: 'sdk-ts', status: s.running ? 'busy' : 'idle', startedAt: s.lastUsed, shells: [] });
+        list.push({ pid: 0, sessionId: s.id, cwd: s.cwd, name: '', entrypoint: s.provider || 'sdk-ts', provider: s.provider, status: s.running ? 'busy' : 'idle', startedAt: s.lastUsed, shells: [] });
       }
     }
     // A chat with no message yet holds nothing to show.
     const shown = list.filter((r) => !sessions.get(r.sessionId)?.fresh);
     for (const r of shown) {
-      r.title = await sessionTitle(r.sessionId, r.cwd);
+      const live = sessions.get(r.sessionId);
+      r.title = live?.provider ? state.agyTitles[r.sessionId] || live.title : await sessionTitle(r.sessionId, r.cwd);
       r.mine = sessions.has(r.sessionId);
       r.active = r.sessionId === activeId;
     }
     return byLastAnswer(shown, (r) => r.cwd, (r) => r.startedAt);
   },
   'running:stop': ({ pid, start }) => stopShell(pid, start),
-  'session:context': ({ sessionId }) => need(sessionId).q.getContextUsage({ detail: 'summary' }),
+  'session:context': ({ sessionId }) => {
+    const s = need(sessionId);
+    return s.provider ? s.context : s.q.getContextUsage({ detail: 'summary' });
+  },
+  // Antigravity chats: the user accepts the warning about Google's terms once.
+  'session:acceptAgyTerms': () => { state.agyTerms = true; saveState(); },
 
-  'sessions:list': async ({ cwd }) => byLastAnswer(await listSessions({ dir: cwd, limit: 60 }), (s) => s.cwd || cwd, (s) => s.lastModified),
-  'sessions:messages': ({ id, cwd }) => getSessionMessages(id, { dir: cwd }),
-  'sessions:rename': async ({ id, cwd, title }) => {
+  'sessions:list': async ({ cwd }) => {
+    const claude = await listSessions({ dir: cwd, limit: 60 });
+    // Antigravity conversations show only after the user started one here (and read the terms).
+    const agy = state.agyTerms && (agyPath = agyPath || findAgy()) ? await listAgySessions(agyPath, cwd, state.agyTitles).catch(() => []) : [];
+    return byLastAnswer([...claude, ...agy], (s) => s.cwd || cwd, (s) => s.lastModified);
+  },
+  'sessions:messages': ({ id, cwd }) => {
+    // An Antigravity chat replays its history when it opens.
+    const s = sessions.get(id);
+    if (s?.provider) return s.history;
+    return getSessionMessages(id, { dir: cwd });
+  },
+  'sessions:rename': async ({ id, cwd, title, provider }) => {
     const name = String(title || '').trim();
     if (!name) throw new Error('Give the session a name.');
     const s = sessions.get(id);
+    // Antigravity has no rename over ACP; Clawdeck keeps the name.
+    if (provider === AGY || s?.provider || state.chatSettings[id]?.provider === AGY) {
+      state.agyTitles[id] = name;
+      saveState();
+      return;
+    }
     const dir = s?.cwd || cwd;
     // A live chat must take the name itself, or its process writes the old one back. Not in the SDK types yet.
     if (s && typeof s.q.renameSession === 'function') await s.q.renameSession(name, id);
@@ -338,7 +415,10 @@ const handlers = {
     titles.delete(id);
   },
 
-  'mcp:status': async () => config.redactMcp(await need().q.mcpServerStatus()),
+  'mcp:status': async () => {
+    if (need().provider) throw new Error('Antigravity manages its MCP servers with `agy mcp`.');
+    return config.redactMcp(await need().q.mcpServerStatus());
+  },
   'mcp:toggle': ({ name, enabled }) => need().q.toggleMcpServer(name, enabled),
   'mcp:reconnect': ({ name }) => need().q.reconnectMcpServer(name),
 
@@ -347,6 +427,7 @@ const handlers = {
     await config.setPluginEnabled(needClaude(), id, enabled);
     let fresh = null;
     for (const s of sessions.values()) {
+      if (s.provider) continue;
       const r = await s.q.reloadPlugins().catch(() => null);
       if (r && s.id === activeId) fresh = { commands: r.commands, agents: r.agents };
     }
@@ -356,6 +437,7 @@ const handlers = {
   'usage:limits': async () => {
     // A token account cannot read the usage API, and Claude Code's cache belongs to the login; show what its chats saw last.
     const s = sessions.get(activeId);
+    if (s?.provider) return { live: false, limits: null };
     if (s && s.account !== LOGIN) return { live: false, limits: accounts.find(s.account)?.usage || null };
     try {
       const u = await need().q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
@@ -371,6 +453,7 @@ const handlers = {
   'accounts:signIn': () => signInAccount(),
   'accounts:login': () => startLogin(),
   'accounts:loginCode': ({ code }) => finishLogin(code),
+  'accounts:agyLogin': () => openAgyLogin(),
   'accounts:loginCancel': () => { cliLogin?.cancel(); cliLogin = null; },
   'accounts:remove': ({ id }) => accounts.remove(id),
   'accounts:move': ({ id, delta }) => accounts.move(id, delta),
@@ -445,6 +528,22 @@ async function finishLogin(code) {
   }
 }
 
+// agy signs in only in its own terminal UI, so Clawdeck opens a terminal window with agy in it.
+function openAgyLogin() {
+  const agy = needAgy();
+  const opts = { detached: true, stdio: 'ignore', cwd: app.getPath('userData') };
+  if (IS_WIN) {
+    spawn('cmd.exe', ['/c', 'start', 'Antigravity sign-in', agy], { ...opts, windowsHide: true }).unref();
+    return;
+  }
+  for (const [term, args] of [['x-terminal-emulator', ['-e', agy]], ['gnome-terminal', ['--', agy]], ['konsole', ['-e', agy]], ['xterm', ['-e', agy]]]) {
+    const p = spawn(term, args, opts);
+    p.on('error', () => {});
+    if (p.pid) { p.unref(); return; }
+  }
+  throw new Error('No terminal app was found. Run `agy` in a terminal to sign in.');
+}
+
 // One short message on the new account: Claude Code says at once when a token is wrong.
 async function addAccount(name, token, { check = true } = {}) {
   if (!name) throw new Error('Give the account a name.');
@@ -503,12 +602,13 @@ app.whenReady().then(async () => {
   setInterval(() => emit({ type: 'accounts', view: accounts.view() }), 60000);
   createWindow();
   // Looks for a new release at start and every 6 hours.
-  updater = new Updater({ root: ROOT, emit, beforeQuit: () => { for (const s of sessions.values()) s.close(); } });
+  updater = new Updater({ root: ROOT, emit, beforeQuit: () => { for (const s of sessions.values()) s.close(); closeAcp(); } });
   setTimeout(() => updater.check(), 10000);
   setInterval(() => updater.check(), 6 * 3600 * 1000);
 });
 
 app.on('window-all-closed', () => {
   for (const s of sessions.values()) s.close();
+  closeAcp();
   app.quit();
 });

@@ -22,7 +22,11 @@ function readImage(file) {
 // A path with spaces (common on Windows) needs quotes, or Claude Code reads only its first word.
 const mention = (p) => (/\s/.test(p) ? `@"${p}"` : `@${p}`);
 
-export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, draft, setDraft, lockedText, suggestion, remote, setRemote }) {
+export default function Composer({ running, disabled, commands, mode, setMode, webSearch, setWebSearch, onSend, onStop, draft, setDraft, lockedText, suggestion, remote, setRemote, provider, modes }) {
+  const agy = provider === 'antigravity';
+  // Antigravity has fewer permission modes than Claude Code.
+  const shownModes = modes ? MODES.filter((m) => modes.includes(m.value)) : MODES;
+  const cycle = modes ? CYCLE.filter((m) => modes.includes(m)) : CYCLE;
   const [images, setImages] = useState([]);
   const [pick, setPick] = useState(0);
   const ref = useRef(null);
@@ -65,8 +69,8 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
     }
     if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
-      const i = CYCLE.indexOf(mode);
-      setMode(CYCLE[(i + 1) % CYCLE.length]);
+      const i = cycle.indexOf(mode);
+      setMode(cycle[(i + 1) % cycle.length]);
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
@@ -114,7 +118,7 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
       )}
       <textarea
         ref={ref} rows={1} value={draft} disabled={disabled}
-        placeholder={lockedText || (disabled ? 'Starting Claude Code' : suggestion || 'Message Claude, or type / for skills and commands')}
+        placeholder={lockedText || (disabled ? `Starting ${agy ? 'Antigravity' : 'Claude Code'}` : suggestion || (agy ? 'Message Antigravity, or type / for commands' : 'Message Claude, or type / for skills and commands'))}
         className={suggestion && !draft ? 'suggesting' : ''}
         onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} onPaste={onPaste}
       />
@@ -122,17 +126,17 @@ export default function Composer({ running, disabled, commands, mode, setMode, w
         <label className="mode">
           <span className="sr-only">Permission mode</span>
           <select value={mode} onChange={(e) => setMode(e.target.value)} title="Shift+Tab cycles modes">
-            {MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            {shownModes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </label>
-        <button className={`web-toggle ${webSearch ? 'on' : ''}`} aria-pressed={webSearch} aria-label="Web search" onClick={() => setWebSearch(!webSearch)}
-          title={webSearch ? 'Claude can search the web and open pages' : 'Claude cannot use the web'}>
+        <button className={`web-toggle ${webSearch && !agy ? 'on' : ''}`} aria-pressed={webSearch && !agy} aria-label="Web search" onClick={() => setWebSearch(!webSearch)} disabled={agy}
+          title={agy ? 'Not available for Antigravity chats: Antigravity can always search the web.' : webSearch ? 'Claude can search the web and open pages' : 'Claude cannot use the web'}>
           <Icon name="globe" /><span className="label">Web search</span>
         </button>
         <button
           className={`web-toggle ${remote !== 'off' ? 'on' : ''} ${remote === 'connecting' ? 'connecting' : ''}`} aria-pressed={remote !== 'off'} aria-label="Remote control"
-          disabled={disabled} onClick={() => setRemote(remote === 'off')}
-          title={{ off: 'Continue this chat in the Claude app or on claude.ai/code', connecting: 'Remote control is connecting', on: 'Remote control is on. Click to turn it off.' }[remote]}
+          disabled={disabled || agy} onClick={() => setRemote(remote === 'off')}
+          title={agy ? 'Not available for Antigravity chats' : { off: 'Continue this chat in the Claude app or on claude.ai/code', connecting: 'Remote control is connecting', on: 'Remote control is on. Click to turn it off.' }[remote]}
         >
           <Icon name="phone" /><span className="label">Remote control</span>
         </button>

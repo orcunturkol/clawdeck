@@ -6,7 +6,8 @@ import Switch from './Switch.jsx';
 import { MODES } from '../components/Composer.jsx';
 import { tokens, folderPath } from '../format.js';
 
-export default function SessionSection({ init, settings, setModel, setEffort, setUltracode, setMode, setAccount, cwd, turns, sessionCost, chatAccount, accounts }) {
+export default function SessionSection({ init, settings, setModel, setEffort, setUltracode, setMode, setAccount, setAgent, cwd, turns, sessionCost, chatAccount, accounts, provider }) {
+  const agy = provider === 'antigravity';
   const [context, setContext] = useState(null);
   const [saved, setSaved] = useState('');
   const models = init?.models || [];
@@ -26,13 +27,13 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
 
   // Claude Code reports the login's account even when a token runs the chat.
   const account = chatAccount && chatAccount.id !== 'login' ? { email: chatAccount.name } : init?.account;
-  const choices = accounts?.list || [];
+  const choices = agy ? [] : accounts?.list || [];
   const own = choices.find((a) => a.id === settings.account);
   return (
     <Section title="Session" icon="sliders" summary={current?.displayName || ''} defaultOpen>
       <dl className="facts">
         <dt>Folder</dt><dd title={cwd}>{folderPath(cwd)}</dd>
-        {choices.length < 2 && account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}
+        {!agy && choices.length < 2 && account?.email && <><dt>Account</dt><dd>{account.email}{account.subscriptionType ? `, ${account.subscriptionType}` : ''}</dd></>}
         {init?.claude_code_version && <><dt>Claude Code</dt><dd>{init.claude_code_version}</dd></>}
         {sessionCost > 0 && <><dt>Cost</dt><dd>${sessionCost.toFixed(2)} at API prices</dd></>}
       </dl>
@@ -49,6 +50,13 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
           ? `Runs on ${chatAccount.email || chatAccount.name} while ${own.email || own.name} is at its limit.`
           : `Moves to ${own.email || own.name} with your next message.`}</p>
       )}
+      <label className="field" title="The coding agent of this chat. A chat with messages stays; a new chat with the other agent opens in this folder. New session uses the last agent you picked.">
+        <span>Agent</span>
+        <select value={agy ? 'antigravity' : 'claude'} onChange={(e) => setAgent(e.target.value)}>
+          <option value="claude">Claude Code</option>
+          <option value="antigravity">Antigravity</option>
+        </select>
+      </label>
       <label className="field">
         <span>Model</span>
         <select value={settings.model || 'default'} disabled={!init} onChange={(e) => setModel(e.target.value)}>
@@ -56,26 +64,28 @@ export default function SessionSection({ init, settings, setModel, setEffort, se
         </select>
       </label>
       <label className="field">
-        <span>Effort</span>
+        <span>{agy ? 'Thinking' : 'Effort'}</span>
         <select value={settings.effort} disabled={!init || !efforts.length} onChange={(e) => setEffort(e.target.value)}>
           <option value="">Model default</option>
           {efforts.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
       </label>
-      <div className="switch-line" title="Claude plans each task as a workflow and runs it with many agents. Uses far more tokens. This chat only.">
+      {!agy && <div className="switch-line" title="Claude plans each task as a workflow and runs it with many agents. Uses far more tokens. This chat only.">
         <span>Ultracode</span>
         <Switch on={Boolean(settings.ultracode)} onChange={setUltracode} label="Turn ultracode on or off" busy={!init} />
-      </div>
+      </div>}
       <label className="field">
         <span>Permissions</span>
         <select value={settings.mode} disabled={!init} onChange={(e) => setMode(e.target.value)}>
-          {MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          {MODES.filter((m) => !agy || init?.modes?.includes(m.value)).map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
       </label>
-      <div className="row-actions">
-        <button className="small" onClick={saveDefaults} disabled={!init}>Save as defaults</button>
-        {saved && <span className="muted">{saved}</span>}
-      </div>
+      {!agy && (
+        <div className="row-actions">
+          <button className="small" onClick={saveDefaults} disabled={!init}>Save as defaults</button>
+          {saved && <span className="muted">{saved}</span>}
+        </div>
+      )}
       {context && (
         <Meter label="Context" value={context.percentage} sub={`${tokens(context.totalTokens)} of ${tokens(context.maxTokens)} tokens`} />
       )}
